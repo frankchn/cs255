@@ -1,0 +1,8 @@
+CS255 Project 1 Milestone 1 README
+==================================
+
+1) Secure Key Storage Database
+
+2) New Key Generation
+
+3) Encrypt and Decryption Functions
