@@ -16,9 +16,8 @@ simplicity and ease of implementation.
 
 Our message format is length (4-bytes) || nonce (16-bytes) || message blocks
 
-4) Message Authentication Codes
+4) Message Authentication Code
 
-We have chosen to use SHA1 HMAC using the Encrypt-then=MAC scenario, as it is
-the only option that guarantees security.
+TODO: NEED TO IMPLEMENT AES MAC
 
 5) Comments about Cryptography in the Browser
