@@ -108,6 +108,27 @@ function LoadKeys() {
   }
 }
 
+// Implements Encrypt-then-MAC with HMAC and AES primitives
+// to provide secrecy and prevent message tampering
+function Encrypt_And_Seal(enc_key, hmac_key, message) {
+  var encrypted_message = AES_Encrypt_String(enc_key, message);
+  var hmac = HMAC_SHA1(hmac_key, encrypted_message);
+
+  return hmac + encrypted_message;
+}
+
+// Complement function to Encrypt_And_Seal
+// Returns null if message found to be tampered
+function Decrypt_And_Unseal(enc_key, hmac_key, message) {
+  var alleged_hmac = message.substring(0, 20);
+  var alleged_ctx = message.substring(20);
+
+  if(HMAC_SHA1(hmac_key, alleged_ctx) != alleged_hmac)
+    return null;
+
+  return AES_Decrypt_String(enc_key, alleged_ctx);
+}
+
 function AES_Extract_Block(str) {
   var data = new Array(4);
 
@@ -136,6 +157,7 @@ function AES_Reconstruct_String(block) {
 
   return str;
 }
+
 
 // Implements AES-CTR-128
 //
@@ -224,6 +246,7 @@ function getLength(str) {
 function KeyDerivation(password, for_hmac) {
   var salt;
 
+  // randomly chosen from CSPRNG 
   if(for_hmac) {
     salt = String.fromCharCode(223, 100, 111, 203, 54,  206, 142, 5, 
                                200, 144, 76,  33,  144, 119, 181, 203, 
@@ -314,8 +337,8 @@ function _TestFramework() {
   console.log("================ CRYPTOGRAPHIC PRIMITIVES VERIFICATION TESTS ================");
 
   console.log("Blank SHA1: " + (Sha1.hash("", false) == "da39a3ee5e6b4b0d3255bfef95601890afd80709" ? "PASS" : "FAIL"));
-  console.log("HMAC_SHA1: " + (authenticated == "fbdb1d1b18aa6c08324b7d64b71fb76370690e1d" ? "PASS" : "FAIL"));
-  console.log("Random String Encryption / Decryption Comparison (Length: " + originaltext.length + "): " + ((originaltext == plaintext) ? "PASS" : "FAIL"));
+  console.log("Blank HMAC_SHA1: " + (authenticated == "fbdb1d1b18aa6c08324b7d64b71fb76370690e1d" ? "PASS" : "FAIL"));
+  console.log("Random String ENC/DEC Comparison (Length: " + originaltext.length + "): " + ((originaltext == plaintext) ? "PASS" : "FAIL"));
 }
 
 
