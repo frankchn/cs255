@@ -96,16 +96,13 @@ function LoadKeys() {
   var master_passphrase = prompt("Please enter your master key for encryption and decryption");
   var master_key = KeyDerivation(master_passphrase);
 
-  SetMasterKey(master_key);
-
   keys = {}; // Reset the keys.
   var saved = localStorage.getItem('facebook-keys-' + my_username);
   if (saved) {
     var key_str = decodeURIComponent(saved);
   
     // TODO: VERIFY MAC IN PART II OF THE MILESTONE!!  
-    var cipher = new sjcl.cipher.aes(master_key);
-    plain_str = cipher.decrypt(key_str);
+    // TODO: ACTUALLY DECRYPT THIS STUFF
 
     keys = JSON.parse(plain_str);
   }
@@ -114,7 +111,7 @@ function LoadKeys() {
 function AES_Extract_Block(str) {
   var data = new Array(4);
 
-  for(var i = 0; i < 4; i++) {
+  for(var i = 0; i < Math.ceil(str.length / 4); i++) {
     data[i] = 0;
     for(var j = 0; j < 4; j++) {
       var pos = i * 4 + j;
@@ -129,7 +126,7 @@ function AES_Reconstruct_String(block) {
   var str = "";
   var data = Array.prototype.slice.call(block);
 
-  for(var i = 0; i < 4; i++) {
+  for(var i = 0; i < block.length; i++) {
     for(var j = 0; j < 4; j++) {
       var tmp = data[i] & 0xFF;
       str += String.fromCharCode(tmp);
@@ -141,13 +138,24 @@ function AES_Reconstruct_String(block) {
 }
 
 // Implements AES-CTR-128
+//
+// @key = Array[4] of ints
+// @plaintext = string to encrypt
+// @returns length (4 bytes) || nonce (16 bytes) || ciphertext
+//
+// Note: Do not use function to encrypt strings bigger than 4GB
+//
+// We argue that appending the plaintext length of the message does not break
+// semantic security since the message length is the same. Also, combining this
+// with Encrypt-then-MAC HMAC will resolve integrity issues (i.e. attackers zeroing)
+// the length field
+
 function AES_Encrypt_String(key, plaintext) {
   var nonce = new Uint32Array(4);
   window.crypto.getRandomValues(nonce);
 
   var cipher = new sjcl.cipher.aes(key);
-  var ciphertext = AES_Reconstruct_String(nonce);
-
+  var ciphertext = setLength(plaintext.length) + AES_Reconstruct_String(nonce);
   var num_blocks = Math.ceil(plaintext.length / 16);
 
   for(var i = 0; i < num_blocks; i++) {
@@ -167,12 +175,13 @@ function AES_Encrypt_String(key, plaintext) {
   return ciphertext;
 }
 
+// Complementary function to AES_Encrypt_String
 function AES_Decrypt_String(key, nonceciphertext) {
-  var nonce = AES_Extract_Block(nonceciphertext.substring(0, 16));
+  var nonce = AES_Extract_Block(nonceciphertext.substring(4, 20));
   var cipher = new sjcl.cipher.aes(key);
   var plaintext = "";
 
-  var ciphertext = nonceciphertext.substr(16);
+  var ciphertext = nonceciphertext.substr(20);
   var num_blocks = Math.ceil(ciphertext.length / 16);
 
   for(var i = 0; i < num_blocks; i++) {
@@ -189,44 +198,50 @@ function AES_Decrypt_String(key, nonceciphertext) {
     plaintext += AES_Reconstruct_String(stream);
   }
 
-  return plaintext;
+  var length = getLength(nonceciphertext.substr(0, 4));
+  return plaintext.substring(0, length);
 }
 
-function SetMasterKey(k) {
-  createSessionCookie("master-key-0", k[0]);
-  createSessionCookie("master-key-1", k[1]);
-  createSessionCookie("master-key-2", k[2]);
-  createSessionCookie("master-key-3", k[3]);
+function setLength(length) {
+  var str = "";
+  for(var j = 0; j < 4; j++) {
+    var tmp = length & 0xFF;
+    str += String.fromCharCode(tmp);
+    length = length >> 8;
+  }
+  return str;
 }
 
-function GetMasterKey() {
-  var master_key = new Array(4);
-  master_key[0] = readCookie("master-key-0");
-  master_key[1] = readCookie("master-key-1");
-  master_key[2] = readCookie("master-key-2");
-  master_key[3] = readCookie("master-key-3");
-  return master_key;
-}
-
-function ClearMasterKey() {
-  eraseCookie("master-key-0");
-  eraseCookie("master-key-1");
-  eraseCookie("master-key-2");
-  eraseCookie("master-key-3"); 
+function getLength(str) {
+  var length = 0;
+  for(var j = 0; j < 4; j++) {
+    length += str.charCodeAt(j) << (j * 8);
+  }
+  return length;
 }
 
 // Implementation of PBKDF1 with SHA1
-function KeyDerivation(password) {
-  var salt = String.fromCharCode(43, 99, 8, 99, 32, 47, 39, 40, 
-                                 43, 121, 59, 205, 210, 171, 20, 5, 
-                                 129, 251, 25, 19, 201, 29, 212, 87, 
-                                 133, 236, 116, 228, 201, 202, 35, 171);
+function KeyDerivation(password, for_hmac) {
+  var salt;
+
+  if(for_hmac) {
+    salt = String.fromCharCode(223, 100, 111, 203, 54,  206, 142, 5, 
+                               200, 144, 76,  33,  144, 119, 181, 203, 
+                               28,  130, 62,  193, 114, 49,  54,  4, 
+                               253, 222, 95,  23,  254, 102, 36,  97);
+  } else {
+    salt = String.fromCharCode(43,  99,  8,   99,  32,  47,  39,  40, 
+                               43,  121, 59,  205, 210, 171, 20,  5, 
+                               129, 251, 25,  19,  201, 29,  212, 87, 
+                               133, 236, 116, 228, 201, 202, 35,  171);
+  }
+
   var iterations = 1000;
   var dk = password + salt;
-  var key = new Array(4);
+  var key = new Array(for_hmac ? 5 : 4);
 
   for(var i = 0; i < iterations; i++) {
-    var tmp = Sha1.hash(dk);
+    var tmp = Sha1.hash(dk, false);
     dk = '';
     if(i < iterations - 1) {
       for(var l = 0; l < tmp.length; l = l + 2) 
@@ -236,19 +251,71 @@ function KeyDerivation(password) {
       key[1] = parseInt(tmp.substring(8, 16), 16);
       key[2] = parseInt(tmp.substring(16, 24), 16);
       key[3] = parseInt(tmp.substring(24, 32), 16);
+
+      if(for_hmac)
+        key[4] = parseInt(tmp.substring(32, 40), 16);
     }
   }
 
   return key;
 }
 
+function convertEndianness(hash) {
+  var str = "";
+  for(var i = 0; i < 5; i++) {
+    for(var j = 0; j < 4; j++) {
+      str += String.fromCharCode(hash.charCodeAt(i * 4 + (3 - j)));
+    }
+  }
+  return str;
+}
+
+function HMAC_SHA1(key, message) {
+  var o_key_pad_1 = Array.prototype.slice.call(key);
+  var i_key_pad_1 = Array.prototype.slice.call(key);
+  var o_key_pad_2 = [0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c];
+  var i_key_pad_2 = [0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636];
+
+  for(var i = 0; i < 5; i++) {
+    o_key_pad_1[i] ^= 0x5c5c5c5c;
+    i_key_pad_1[i] ^= 0x36363636;
+  }
+
+  var i_key_pad = AES_Reconstruct_String(i_key_pad_1) + AES_Reconstruct_String(i_key_pad_2);
+  var o_key_pad = AES_Reconstruct_String(o_key_pad_1) + AES_Reconstruct_String(o_key_pad_2);
+
+  var intermediate_string = AES_Reconstruct_String(Sha1.hash(i_key_pad + message, true));
+  var final_string = Sha1.hash(o_key_pad + convertEndianness(intermediate_string), false);
+
+  return final_string;
+}
+
 function _TestFramework() {
-  var master_key = KeyDerivation("This is a test!");
+  var passphrase = "";
+  for(var i = 0; i < 30; i++) 
+    passphrase += String.fromCharCode(Math.floor(Math.random() * 256));
+  
+  var master_key = KeyDerivation(passphrase, 0);
+  var hmac_key = KeyDerivation(passphrase, 1);
 
-  var encrypted_string = AES_Encrypt_String(master_key, "asdgasdg");
-  var decrypted_string = AES_Decrypt_String(master_key, encrypted_string);
+  var originaltext = "";
+  var ciphertext;
+  var plaintext;
+  var lengthofstring = Math.floor(Math.random() * 256) + 350;
 
-  console.log("DECRYPTED STRING = " + decrypted_string);
+  for(var i = 0; i < lengthofstring; i++) 
+    originaltext += String.fromCharCode(Math.floor(Math.random() * 256));
+
+  ciphertext = AES_Encrypt_String(master_key, originaltext);
+  plaintext = AES_Decrypt_String(master_key, ciphertext);
+
+  var authenticated = HMAC_SHA1([0,0,0,0,0], "");
+
+  console.log("================ CRYPTOGRAPHIC PRIMITIVES VERIFICATION TESTS ================");
+
+  console.log("Blank SHA1: " + (Sha1.hash("", false) == "da39a3ee5e6b4b0d3255bfef95601890afd80709" ? "PASS" : "FAIL"));
+  console.log("HMAC_SHA1: " + (authenticated == "fbdb1d1b18aa6c08324b7d64b71fb76370690e1d" ? "PASS" : "FAIL"));
+  console.log("Random String Encryption / Decryption Comparison (Length: " + originaltext.length + "): " + ((originaltext == plaintext) ? "PASS" : "FAIL"));
 }
 
 
@@ -259,7 +326,7 @@ function _TestFramework() {
 
 var Sha1 = {};
 
-Sha1.hash = function(msg) {  
+Sha1.hash = function(msg, rtnarray) {  
 
   var K = [0x5a827999, 0x6ed9eba1, 0x8f1bbcdc, 0xca62c1d6];  
   msg += String.fromCharCode(0x80);  // add trailing '1' bit (+ 0's padding) to string [§5.1.1]
@@ -318,8 +385,18 @@ Sha1.hash = function(msg) {
     H4 = (H4+e) & 0xffffffff;
   }
 
-  return Sha1.toHexStr(H0) + Sha1.toHexStr(H1) + 
-    Sha1.toHexStr(H2) + Sha1.toHexStr(H3) + Sha1.toHexStr(H4);
+  if(rtnarray) {
+    var rtn = new Array(5);
+    rtn[0] = H0;
+    rtn[1] = H1;
+    rtn[2] = H2;
+    rtn[3] = H3;
+    rtn[4] = H4;
+    return rtn;
+  } else {
+    return Sha1.toHexStr(H0) + Sha1.toHexStr(H1) + 
+      Sha1.toHexStr(H2) + Sha1.toHexStr(H3) + Sha1.toHexStr(H4);
+  }
 }
 
 //
