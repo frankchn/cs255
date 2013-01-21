@@ -83,7 +83,7 @@ function GenerateKey(group) {
 
   // this generates a random 128-bit key using crypto primitives
   var encr_key = GetRandomValues(4);
-  var hmac_key = GetRandomValues(5);
+  var hmac_key = GetRandomValues(4);
 
   keys[group] = {};
   keys[group]['encr'] = encr_key;
@@ -137,7 +137,13 @@ function Encrypt_And_Seal(enc_key, hmac_key, message) {
 // Returns null if message found to be tampered
 // TODO: MODIFY THIS WHEN WE SWITCH TO AES BASED HMAC
 function Decrypt_And_Unseal(enc_key, hmac_key, message) {
-  var decoded_message = window.atob(message);
+  var decoded_message;
+  try {
+    decoded_message = window.atob(message);
+  } catch (e) {
+    console.log("Message corrupted.");
+    return null;
+  }
 
   var alleged_hmac = decoded_message.substring(0, 40);
   var alleged_ctx = decoded_message.substring(40);
@@ -280,7 +286,7 @@ function KeyDerivation(password, for_hmac) {
 
   var iterations = 1000;
   var dk = password + salt;
-  var key = new Array(for_hmac ? 5 : 4);
+  var key = new Array(4);
 
   for(var i = 0; i < iterations; i++) {
     var tmp = Sha1.hash(dk, false);
@@ -293,9 +299,6 @@ function KeyDerivation(password, for_hmac) {
       key[1] = parseInt(tmp.substring(8, 16), 16);
       key[2] = parseInt(tmp.substring(16, 24), 16);
       key[3] = parseInt(tmp.substring(24, 32), 16);
-
-      if(for_hmac)
-        key[4] = parseInt(tmp.substring(32, 40), 16);
     }
   }
 
@@ -312,14 +315,21 @@ function convertEndianness(hash) {
   return str;
 }
 
+
+// TO BE IMPLEMENTED
+function HMAC_AES(key, message) {
+
+}
+
+
 // TODO: CHANGE HMAC_SHA1 to SOME AES BASED THING
 function HMAC_SHA1(key, message) {
   var o_key_pad_1 = Array.prototype.slice.call(key);
   var i_key_pad_1 = Array.prototype.slice.call(key);
-  var o_key_pad_2 = [0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c];
-  var i_key_pad_2 = [0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636];
+  var o_key_pad_2 = [0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c];
+  var i_key_pad_2 = [0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636];
 
-  for(var i = 0; i < 5; i++) {
+  for(var i = 0; i < 4; i++) {
     o_key_pad_1[i] ^= 0x5c5c5c5c;
     i_key_pad_1[i] ^= 0x36363636;
   }
@@ -352,13 +362,13 @@ function _TestFramework() {
   ciphertext = AES_Encrypt_String(master_key, originaltext);
   plaintext = AES_Decrypt_String(master_key, ciphertext);
 
-  var authenticated = HMAC_SHA1([0,0,0,0,0], "");
+  var authenticated = HMAC_SHA1([0,0,0,0], "");
 
   var authenticated_msg = Encrypt_And_Seal(master_key, hmac_key, originaltext);
   var decrypted_msg = Decrypt_And_Unseal(master_key, hmac_key, authenticated_msg);
 
-  var failure_1 = Decrypt_And_Unseal(master_key, hmac_key, authenticated_msg + "1");
-  var failure_2 = Decrypt_And_Unseal(master_key, hmac_key, authenticated_msg.substring(0, authenticated_msg.length - 1));
+  var failure_1 = Decrypt_And_Unseal(master_key, hmac_key, "1" + authenticated_msg);
+  var failure_2 = Decrypt_And_Unseal(master_key, hmac_key, authenticated_msg.substring(0, authenticated_msg.length - 10));
   var failure_3 = Decrypt_And_Unseal(master_key, hmac_key, authenticated_msg.substring(0, 40) + 'ABCDEFGH' + authenticated_msg.substring(48));
 
   console.log("================ CRYPTOGRAPHIC PRIMITIVES VERIFICATION TESTS ================");
