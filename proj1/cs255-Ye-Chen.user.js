@@ -120,8 +120,8 @@ function Encrypt_And_Seal(enc_key, hmac_key, message) {
 // Complement function to Encrypt_And_Seal
 // Returns null if message found to be tampered
 function Decrypt_And_Unseal(enc_key, hmac_key, message) {
-  var alleged_hmac = message.substring(0, 20);
-  var alleged_ctx = message.substring(20);
+  var alleged_hmac = message.substring(0, 40);
+  var alleged_ctx = message.substring(40);
 
   if(HMAC_SHA1(hmac_key, alleged_ctx) != alleged_hmac)
     return null;
@@ -334,11 +334,22 @@ function _TestFramework() {
 
   var authenticated = HMAC_SHA1([0,0,0,0,0], "");
 
+  var authenticated_msg = Encrypt_And_Seal(master_key, hmac_key, originaltext);
+  var decrypted_msg = Decrypt_And_Unseal(master_key, hmac_key, authenticated_msg);
+
+  var failure_1 = Decrypt_And_Unseal(master_key, hmac_key, authenticated_msg + "1");
+  var failure_2 = Decrypt_And_Unseal(master_key, hmac_key, authenticated_msg.substring(0, authenticated_msg.length - 1));
+  var failure_3 = Decrypt_And_Unseal(master_key, hmac_key, authenticated_msg.substring(0, 40) + 'ABCDEFGH' + authenticated_msg.substring(48));
+
   console.log("================ CRYPTOGRAPHIC PRIMITIVES VERIFICATION TESTS ================");
 
   console.log("Blank SHA1: " + (Sha1.hash("", false) == "da39a3ee5e6b4b0d3255bfef95601890afd80709" ? "PASS" : "FAIL"));
   console.log("Blank HMAC_SHA1: " + (authenticated == "fbdb1d1b18aa6c08324b7d64b71fb76370690e1d" ? "PASS" : "FAIL"));
-  console.log("Random String ENC/DEC Comparison (Length: " + originaltext.length + "): " + ((originaltext == plaintext) ? "PASS" : "FAIL"));
+  console.log("Random String ENC/DEC Test (Length: " + originaltext.length + "): " + ((originaltext == plaintext) ? "PASS" : "FAIL"));
+  console.log("Random String SEAL/UNSEAL Test (Length: " + originaltext.length + "): " + ((originaltext == decrypted_msg) ? "PASS" : "FAIL"));
+  console.log("Does Unseal Fail Correctly (1 - Appending): " + (failure_1 == null ? "PASS" : "FAIL"));
+  console.log("Does Unseal Fail Correctly (2 - Removal): " + (failure_2 == null ? "PASS" : "FAIL"));
+  console.log("Does Unseal Fail Correctly (3 - Changing Text): " + (failure_3 == null ? "PASS" : "FAIL"));
 }
 
 
