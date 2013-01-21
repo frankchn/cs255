@@ -26,6 +26,17 @@
 
 var my_username; // user signed in as
 var keys = {}; // association map of keys: group -> key
+var master_key = null;
+
+function GetMasterKey() {
+  if(master_key !== null) return master_key;
+  if(readCookie("master_passphrase") !== null) return readCookie("master_passphrase");
+
+  master_key = prompt("Please enter your master key for encryption and decryption");
+  createSessionCookie("master_passphrase", master_key);
+
+  return master_key;
+}
 
 // Some initialization functions are called at the very end of this script.
 // You only have to edit the top portion.
@@ -36,16 +47,13 @@ var keys = {}; // association map of keys: group -> key
 // @param {String} group Group name.
 // @return {String} Encryption of the plaintext, encoded as a string.
 function Encrypt(plainText, group) {
-  // CS255-todo: encrypt the plainText, using key for the group.
-  if ((plainText.indexOf('rot13:') == 0) || (plainText.length < 1)) {
-    // already done, or blank
-    alert("Try entering a message (the button works only once)");
-    return plainText;
-  } else {
-    // encrypt, add tag.
-    return 'rot13:' + rot13(plainText);
-  }
+  if(!(group in keys))
+    GenerateKey(group);
 
+  var encr_key = keys[group]['encr'];
+  var hmac_key = keys[group]['hmac'];
+
+  return Encrypt_And_Seal(encr_key, hmac_key, plainText);
 }
 
 // Return the decryption of the message for the given group, in the form of a string.
@@ -55,18 +63,17 @@ function Encrypt(plainText, group) {
 // @param {String} group Group name.
 // @return {String} Decryption of the ciphertext.
 function Decrypt(cipherText, group) {
+  if(!(group in keys))
+    throw "Have not seen keys for group before. Cannot decrypt message.";
 
-  // CS255-todo: implement decryption on encrypted messages
+  var encr_key = keys[group]['encr'];
+  var hmac_key = keys[group]['hmac'];
 
-  if (cipherText.indexOf('rot13:') == 0) {
+  var decr_text = Decrypt_And_Unseal(encr_key, hmac_key, cipherText);
+  if(decr_text === null)
+    throw "Unable to decrypt message. Message may have been tampered or the key has changed.";
 
-    // decrypt, ignore the tag.
-    var decryptedMsg = rot13(cipherText.slice(6));
-    return decryptedMsg;
-
-  } else {
-    throw "not encrypted";
-  }
+  return decr_text;
 }
 
 // Generate a new key for the given group.
@@ -75,34 +82,43 @@ function Decrypt(cipherText, group) {
 function GenerateKey(group) {
 
   // this generates a random 128-bit key using crypto primitives
-  var key = new Uint32Array(4);
-  window.crypto.getRandomValues(key);
+  var encr_key = GetRandomValues(4);
+  var hmac_key = GetRandomValues(5);
 
-  keys[group] = key;
+  keys[group] = {};
+  keys[group]['encr'] = encr_key;
+  keys[group]['hmac'] = hmac_key;
   SaveKeys();
 }
 
 // Take the current group keys, and save them to disk.
 function SaveKeys() {
-  
-  // CS255-todo: plaintext keys going to disk?
+  var master_passphrase = GetMasterKey();
   var key_str = JSON.stringify(keys);
 
+  var encr_key = KeyDerivation(master_passphrase, 0);
+  var hmac_key = KeyDerivation(master_passphrase, 1);
+
+  key_str = Encrypt_And_Seal(encr_key, hmac_key, key_str);
   localStorage.setItem('facebook-keys-' + my_username, encodeURIComponent(key_str));
 }
 
 // Load the group keys from disk.
 function LoadKeys() {
-  var master_passphrase = prompt("Please enter your master key for encryption and decryption");
-  var master_key = KeyDerivation(master_passphrase);
+  var master_passphrase = GetMasterKey();
+  createSessionCookie("master_passphrase", master_passphrase);
+
+  var encr_key = KeyDerivation(master_passphrase, 0);
+  var hmac_key = KeyDerivation(master_passphrase, 1);
 
   keys = {}; // Reset the keys.
   var saved = localStorage.getItem('facebook-keys-' + my_username);
   if (saved) {
     var key_str = decodeURIComponent(saved);
-  
-    // TODO: VERIFY MAC IN PART II OF THE MILESTONE!!  
-    // TODO: ACTUALLY DECRYPT THIS STUFF
+    var plain_str = Decrypt_And_Unseal(encr_key, hmac_key, key_str);
+
+    if(plain_str === null) 
+      throw "Unable to decrypt. Did you enter the wrong passphrase?";
 
     keys = JSON.parse(plain_str);
   }
@@ -114,17 +130,21 @@ function Encrypt_And_Seal(enc_key, hmac_key, message) {
   var encrypted_message = AES_Encrypt_String(enc_key, message);
   var hmac = HMAC_SHA1(hmac_key, encrypted_message);
 
-  return hmac + encrypted_message;
+  return window.btoa(hmac + encrypted_message);
 }
 
 // Complement function to Encrypt_And_Seal
 // Returns null if message found to be tampered
+// TODO: MODIFY THIS WHEN WE SWITCH TO AES BASED HMAC
 function Decrypt_And_Unseal(enc_key, hmac_key, message) {
-  var alleged_hmac = message.substring(0, 40);
-  var alleged_ctx = message.substring(40);
+  var decoded_message = window.atob(message);
 
-  if(HMAC_SHA1(hmac_key, alleged_ctx) != alleged_hmac)
+  var alleged_hmac = decoded_message.substring(0, 40);
+  var alleged_ctx = decoded_message.substring(40);
+
+  if(HMAC_SHA1(hmac_key, alleged_ctx) != alleged_hmac) {
     return null;
+  }
 
   return AES_Decrypt_String(enc_key, alleged_ctx);
 }
@@ -173,8 +193,7 @@ function AES_Reconstruct_String(block) {
 // the length field
 
 function AES_Encrypt_String(key, plaintext) {
-  var nonce = new Uint32Array(4);
-  window.crypto.getRandomValues(nonce);
+  var nonce = GetRandomValues(4);
 
   var cipher = new sjcl.cipher.aes(key);
   var ciphertext = setLength(plaintext.length) + AES_Reconstruct_String(nonce);
@@ -293,6 +312,7 @@ function convertEndianness(hash) {
   return str;
 }
 
+// TODO: CHANGE HMAC_SHA1 to SOME AES BASED THING
 function HMAC_SHA1(key, message) {
   var o_key_pad_1 = Array.prototype.slice.call(key);
   var i_key_pad_1 = Array.prototype.slice.call(key);

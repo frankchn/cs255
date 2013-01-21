@@ -5,4 +5,20 @@ CS255 Project 1 Milestone 1 README
 
 2) New Key Generation
 
+We use the cryptographic primitives provided by Google Chrome and other Webkit 
+browsers with the window.crypto.getRandomValues function, as suggested by the
+handout.
+
 3) Encrypt and Decryption Functions
+
+We chose to implement AES-CTR-128 for encryption and decryption because of its
+simplicity and ease of implementation.
+
+Our message format is length (4-bytes) || nonce (16-bytes) || message blocks
+
+4) Message Authentication Codes
+
+We have chosen to use SHA1 HMAC using the Encrypt-then=MAC scenario, as it is
+the only option that guarantees security.
+
+5) Comments about Cryptography in the Browser
