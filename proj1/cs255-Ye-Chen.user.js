@@ -267,7 +267,41 @@ function getLength(str) {
   return length;
 }
 
+// TODO: IMPLEMENT Davies-Meyer on AES with length appending
+// to convert the crypto primitive from AES to DM.
+function AES_DMHash(str) {
+  var str_len = str.length;
+  var hash_str = str + String.fromCharCode(0x80);
+  var num_blocks = Math.ceil(hash_str.length / 16);
+
+  // initially this contains the salt
+  var h_last = [582143602, 1640785938, 38258730, 193844149];
+
+  for(var i = 0; i < num_blocks; i++) {
+    // extract the message block and set a new AES cipher with that as key
+    var msg_block = AES_Extract_Block(hash_str.substring(i * 4, (i + 1) * 4));
+    var cipher = new sjcl.cipher.aes(msg_block);
+    var ctext = cipher.encrypt(h_last);
+
+    for(var j = 0; j < ctext.length; j++) {
+      h_last[i] = ctext[i] ^ h_last[i];
+    }
+  }
+
+  var last_block = [0, 0, 0, str_len];
+  var cipher = new sjcl.cipher.aes(last_block);
+  var ctext = cipher.encrypt(h_last);
+
+  var result = [0,0,0,0];
+  for(var j = 0; j < ctext.length; j++) {
+    result[j] = ctext[j] ^ h_last[j];
+  }
+
+  return result;
+}
+
 // Implementation of PBKDF1 with SHA1
+// TODO: Implement PBKDF2
 function KeyDerivation(password, for_hmac) {
   var salt;
 
@@ -355,6 +389,9 @@ function _TestFramework() {
   var ciphertext;
   var plaintext;
   var lengthofstring = Math.floor(Math.random() * 256) + 350;
+
+  var aes_hash = AES_DMHash("abcasdgasgdasdgdefg");
+  console.log(aes_hash);
 
   for(var i = 0; i < lengthofstring; i++) 
     originaltext += String.fromCharCode(Math.floor(Math.random() * 256));
