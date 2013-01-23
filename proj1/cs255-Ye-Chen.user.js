@@ -128,7 +128,7 @@ function LoadKeys() {
 // to provide secrecy and prevent message tampering
 function Encrypt_And_Seal(enc_key, hmac_key, message) {
   var encrypted_message = AES_Encrypt_String(enc_key, message);
-  var hmac = HMAC_SHA1(hmac_key, encrypted_message);
+  var hmac = AES_CBCMAC(hmac_key, encrypted_message);
 
   return window.btoa(hmac + encrypted_message);
 }
@@ -145,10 +145,10 @@ function Decrypt_And_Unseal(enc_key, hmac_key, message) {
     return null;
   }
 
-  var alleged_hmac = decoded_message.substring(0, 40);
-  var alleged_ctx = decoded_message.substring(40);
+  var alleged_hmac = decoded_message.substring(0, 32);
+  var alleged_ctx = decoded_message.substring(32);
 
-  if(HMAC_SHA1(hmac_key, alleged_ctx) != alleged_hmac) {
+  if(AES_CBCMAC(hmac_key, alleged_ctx) != alleged_hmac) {
     return null;
   }
 
@@ -267,15 +267,19 @@ function getLength(str) {
   return length;
 }
 
-// TODO: IMPLEMENT Davies-Meyer on AES with length appending
-// to convert the crypto primitive from AES to DM.
-function AES_DMHash(str) {
+// Davies-Meyer Hashing implemented onto of the AES cryptoprimitive.
+function AES_DMHash(str, salt) {
+
+  if(str === null) str = "";
+
   var str_len = str.length;
   var hash_str = str + String.fromCharCode(0x80);
   var num_blocks = Math.ceil(hash_str.length / 16);
 
   // initially this contains the salt
   var h_last = [582143602, 1640785938, 38258730, 193844149];
+  if(salt !== undefined)
+    h_last = salt;
 
   for(var i = 0; i < num_blocks; i++) {
     // extract the message block and set a new AES cipher with that as key
@@ -300,43 +304,28 @@ function AES_DMHash(str) {
   return result;
 }
 
-// Implementation of PBKDF1 with SHA1
-// TODO: Implement PBKDF2
+// 128-bit 1000 round PBKDF2 implemented on top of AES Davies Meyer hashing
 function KeyDerivation(password, for_hmac) {
+
   var salt;
 
-  // randomly chosen from CSPRNG 
-  if(for_hmac) {
-    salt = String.fromCharCode(223, 100, 111, 203, 54,  206, 142, 5, 
-                               200, 144, 76,  33,  144, 119, 181, 203, 
-                               28,  130, 62,  193, 114, 49,  54,  4, 
-                               253, 222, 95,  23,  254, 102, 36,  97);
-  } else {
-    salt = String.fromCharCode(43,  99,  8,   99,  32,  47,  39,  40, 
-                               43,  121, 59,  205, 210, 171, 20,  5, 
-                               129, 251, 25,  19,  201, 29,  212, 87, 
-                               133, 236, 116, 228, 201, 202, 35,  171);
+  if(for_hmac) salt = [490799654, 1628126611, 811452677, 1565170293];
+  else salt = [2014299326, 4719496, 3580732068, 912596778];
+
+  var arrx = [];
+  arrx[0] = AES_DMHash(password, salt);
+
+  for(var i = 1; i < 1000; i++) {
+    arrx[i] = AES_DMHash(password, arrx[i - 1]);
   }
 
-  var iterations = 1000;
-  var dk = password + salt;
-  var key = new Array(4);
-
-  for(var i = 0; i < iterations; i++) {
-    var tmp = Sha1.hash(dk, false);
-    dk = '';
-    if(i < iterations - 1) {
-      for(var l = 0; l < tmp.length; l = l + 2) 
-        dk += String.fromCharCode(parseInt(tmp.substring(l, l + 2), 16));
-    } else {
-      key[0] = parseInt(tmp.substring(0, 8), 16);
-      key[1] = parseInt(tmp.substring(8, 16), 16);
-      key[2] = parseInt(tmp.substring(16, 24), 16);
-      key[3] = parseInt(tmp.substring(24, 32), 16);
+  for(var i = 1; i < 1000; i++) {
+    for(var j = 0; j < 4; j++) {
+      arrx[0][j] ^= arrx[i][j];
     }
   }
 
-  return key;
+  return arrx[0];
 }
 
 function convertEndianness(hash) {
@@ -350,31 +339,36 @@ function convertEndianness(hash) {
 }
 
 
-// TO BE IMPLEMENTED
-function HMAC_AES(key, message) {
+// AES CBC MAC at http://en.wikipedia.org/wiki/CBC-MAC
+// with length prepending
+function AES_CBCMAC(key, message) {
+  var cipher = new sjcl.cipher.aes(key);
 
-}
+  var first_block = [0, 0, 0, message.length];
+  var num_blocks = Math.ceil(message.length / 16);
+  var result = cipher.encrypt(first_block);
 
-
-// TODO: CHANGE HMAC_SHA1 to SOME AES BASED THING
-function HMAC_SHA1(key, message) {
-  var o_key_pad_1 = Array.prototype.slice.call(key);
-  var i_key_pad_1 = Array.prototype.slice.call(key);
-  var o_key_pad_2 = [0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c, 0x5c5c5c5c];
-  var i_key_pad_2 = [0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636, 0x36363636];
-
-  for(var i = 0; i < 4; i++) {
-    o_key_pad_1[i] ^= 0x5c5c5c5c;
-    i_key_pad_1[i] ^= 0x36363636;
+  for(var i = 0; i < num_blocks; i++) {
+    var msgblock = AES_Extract_Block(message.substring(i * 4, (i + 1) * 4));
+    for(var j = 0; j < 4; j++) {
+      msgblock[j] ^= result[j];
+    }
+    result = cipher.encrypt(msgblock);
   }
 
-  var i_key_pad = AES_Reconstruct_String(i_key_pad_1) + AES_Reconstruct_String(i_key_pad_2);
-  var o_key_pad = AES_Reconstruct_String(o_key_pad_1) + AES_Reconstruct_String(o_key_pad_2);
+  var hash = "";
+  for(var i = 0; i < result.length; i++) {
+    var val = result[i];
+    for(var j = 0; j < 4; j++) {
+      var c = (val & 0xFF).toString(16);
+      val = val >> 8;
 
-  var intermediate_string = AES_Reconstruct_String(Sha1.hash(i_key_pad + message, true));
-  var final_string = Sha1.hash(o_key_pad + convertEndianness(intermediate_string), false);
+      if(c.length == 1) hash += '0' + c; 
+      else hash += c;
+    }
+  }
 
-  return final_string;
+  return hash;
 }
 
 function _TestFramework() {
@@ -399,7 +393,7 @@ function _TestFramework() {
   ciphertext = AES_Encrypt_String(master_key, originaltext);
   plaintext = AES_Decrypt_String(master_key, ciphertext);
 
-  var authenticated = HMAC_SHA1([0,0,0,0], "");
+  var authenticated = AES_CBCMAC([0,0,0,0], "");
 
   var authenticated_msg = Encrypt_And_Seal(master_key, hmac_key, originaltext);
   var decrypted_msg = Decrypt_And_Unseal(master_key, hmac_key, authenticated_msg);
@@ -410,8 +404,7 @@ function _TestFramework() {
 
   console.log("================ CRYPTOGRAPHIC PRIMITIVES VERIFICATION TESTS ================");
 
-  console.log("Blank SHA1: " + (Sha1.hash("", false) == "da39a3ee5e6b4b0d3255bfef95601890afd80709" ? "PASS" : "FAIL"));
-  console.log("Blank HMAC_SHA1: " + (authenticated == "fbdb1d1b18aa6c08324b7d64b71fb76370690e1d" ? "PASS" : "FAIL"));
+  console.log("Blank AES_CBCMAC: " + authenticated);
   console.log("Random String ENC/DEC Test (Length: " + originaltext.length + "): " + ((originaltext == plaintext) ? "PASS" : "FAIL"));
   console.log("Random String SEAL/UNSEAL Test (Length: " + originaltext.length + "): " + ((originaltext == decrypted_msg) ? "PASS" : "FAIL"));
   console.log("Does Unseal Fail Correctly (1 - Appending): " + (failure_1 == null ? "PASS" : "FAIL"));
