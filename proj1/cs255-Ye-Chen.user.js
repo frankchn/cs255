@@ -30,10 +30,10 @@ var master_key = null;
 
 function GetMasterKey() {
   if(master_key !== null) return master_key;
-  if(readCookie("master_passphrase") !== null) return readCookie("master_passphrase");
+  if(sessionStorage.fb_master_key !== undefined) return sessionStorage.fb_master_key;
 
   master_key = prompt("Please enter your master key for encryption and decryption");
-  createSessionCookie("master_passphrase", master_key);
+  sessionStorage.fb_master_key = master_key;
 
   return master_key;
 }
@@ -106,7 +106,6 @@ function SaveKeys() {
 // Load the group keys from disk.
 function LoadKeys() {
   var master_passphrase = GetMasterKey();
-  createSessionCookie("master_passphrase", master_passphrase);
 
   var encr_key = KeyDerivation(master_passphrase, 0);
   var hmac_key = KeyDerivation(master_passphrase, 1);
