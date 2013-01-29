@@ -2,7 +2,7 @@
 // @namespace      CS255-Ye-Chen
 // @name           CS255-Ye-Chen
 // @description    CS255-Ye-Chen - CS255 Assignment 1
-// @version        1.4
+// @version        1.2
 //
 // 
 // @include        http://www.facebook.com/*
@@ -96,26 +96,8 @@ function SaveKeys() {
   var master_passphrase = GetMasterKey();
   var key_str = JSON.stringify(keys);
 
-  var encr_a, hmac_a;
-
-  var encr_salt = JSON.parse(decodeURIComponent(localStorage.getItem('facebook-salt-encr-' + my_username)));
-  var hmac_salt = JSON.parse(decodeURIComponent(localStorage.getItem('facebook-salt-hmac-' + my_username)));
-
-  if(encr_salt && hmac_salt) {
-    encr_a = KeyDerivation(master_passphrase, encr_salt);
-    hmac_a = KeyDerivation(master_passphrase, hmac_salt);
-  } else {
-    encr_a = KeyDerivation(master_passphrase);
-    hmac_a = KeyDerivation(master_passphrase);
-  }
-
-  var encr_key = encr_a[0];
-  var hmac_key = encr_a[0];
-
-  localStorage.setItem('facebook-salt-encr-' + my_username, 
-    encodeURIComponent(JSON.stringify(encr_a[1])));
-  localStorage.setItem('facebook-salt-hmac-' + my_username, 
-    encodeURIComponent(JSON.stringify(encr_a[1])));
+  var encr_key = KeyDerivation(master_passphrase, 0);
+  var hmac_key = KeyDerivation(master_passphrase, 1);
 
   key_str = Encrypt_And_Seal(encr_key, hmac_key, key_str);
   localStorage.setItem('facebook-keys-' + my_username, encodeURIComponent(key_str));
@@ -125,19 +107,12 @@ function SaveKeys() {
 function LoadKeys() {
   var master_passphrase = GetMasterKey();
 
-  var encr_key;
-  var hmac_key;
+  var encr_key = KeyDerivation(master_passphrase, 0);
+  var hmac_key = KeyDerivation(master_passphrase, 1);
 
   keys = {}; // Reset the keys.
   var saved = localStorage.getItem('facebook-keys-' + my_username);
-
   if (saved) {
-    encr_salt = JSON.parse(decodeURIComponent(localStorage.getItem('facebook-salt-encr-' + my_username)));
-    hmac_salt = JSON.parse(decodeURIComponent(localStorage.getItem('facebook-salt-hmac-' + my_username)));
-
-    encr_key = KeyDerivation(master_passphrase, encr_salt);
-    hmac_key = KeyDerivation(master_passphrase, hmac_salt);
-
     var key_str = decodeURIComponent(saved);
     var plain_str = Decrypt_And_Unseal(encr_key, hmac_key, key_str);
 
@@ -145,18 +120,6 @@ function LoadKeys() {
       throw "Unable to decrypt. Did you enter the wrong passphrase?";
 
     keys = JSON.parse(plain_str);
-  } else {
-    var encr_a = KeyDerivation(master_passphrase);
-    var hmac_a = KeyDerivation(master_passphrase);
-
-    encr_key = encr_a[0];
-    hmac_key = hmac_a[0];
-
-    localStorage.setItem('facebook-salt-encr-' + my_username, 
-      encodeURIComponent(JSON.stringify(encr_a[1])));
-    localStorage.setItem('facebook-salt-hmac-' + my_username, 
-      encodeURIComponent(JSON.stringify(encr_a[1])));
-    
   }
 }
 
@@ -171,6 +134,7 @@ function Encrypt_And_Seal(enc_key, hmac_key, message) {
 
 // Complement function to Encrypt_And_Seal
 // Returns null if message found to be tampered
+// TODO: MODIFY THIS WHEN WE SWITCH TO AES BASED HMAC
 function Decrypt_And_Unseal(enc_key, hmac_key, message) {
   var decoded_message;
   try {
@@ -302,20 +266,77 @@ function getLength(str) {
   return length;
 }
 
-// 128-bit 1000 round PBKDF2 implemented on top of AES Davies Meyer hashing
-function KeyDerivation(password, salt) {
-  var salt, key;
+// Davies-Meyer Hashing implemented onto of the AES cryptoprimitive.
+function AES_DMHash(str, salt) {
 
-  salt = salt || GetRandomValues(4);
+  if(str === null) str = "";
 
-  var bitpassword = sjcl.codec.utf8String.toBits(password);
+  var str_len = str.length;
+  var hash_str = str + String.fromCharCode(0x80);
+  var num_blocks = Math.ceil(hash_str.length / 16);
 
-  key = sjcl.misc.pbkdf2(bitpassword, salt, 1000, 128);
-  key = sjcl.codec.utf8String.fromBits_noURI(key);
-  key = AES_Extract_Block(key);
+  // initially this contains the salt
+  var h_last = [582143602, 1640785938, 38258730, 193844149];
+  if(salt !== undefined)
+    h_last = salt;
 
-  return [key, salt];
+  for(var i = 0; i < num_blocks; i++) {
+    // extract the message block and set a new AES cipher with that as key
+    var msg_block = AES_Extract_Block(hash_str.substring(i * 4, (i + 1) * 4));
+    var cipher = new sjcl.cipher.aes(msg_block);
+    var ctext = cipher.encrypt(h_last);
+
+    for(var j = 0; j < ctext.length; j++) {
+      h_last[i] = ctext[i] ^ h_last[i];
+    }
+  }
+
+  var last_block = [0, 0, 0, str_len];
+  var cipher = new sjcl.cipher.aes(last_block);
+  var ctext = cipher.encrypt(h_last);
+
+  var result = [0,0,0,0];
+  for(var j = 0; j < ctext.length; j++) {
+    result[j] = ctext[j] ^ h_last[j];
+  }
+
+  return result;
 }
+
+// 128-bit 1000 round PBKDF2 implemented on top of AES Davies Meyer hashing
+function KeyDerivation(password, for_hmac) {
+
+  var salt;
+
+  if(for_hmac) salt = [490799654, 1628126611, 811452677, 1565170293];
+  else salt = [2014299326, 4719496, 3580732068, 912596778];
+
+  var arrx = [];
+  arrx[0] = AES_DMHash(password, salt);
+
+  for(var i = 1; i < 1000; i++) {
+    arrx[i] = AES_DMHash(password, arrx[i - 1]);
+  }
+
+  for(var i = 1; i < 1000; i++) {
+    for(var j = 0; j < 4; j++) {
+      arrx[0][j] ^= arrx[i][j];
+    }
+  }
+
+  return arrx[0];
+}
+
+function convertEndianness(hash) {
+  var str = "";
+  for(var i = 0; i < 5; i++) {
+    for(var j = 0; j < 4; j++) {
+      str += String.fromCharCode(hash.charCodeAt(i * 4 + (3 - j)));
+    }
+  }
+  return str;
+}
+
 
 // AES CBC MAC at http://en.wikipedia.org/wiki/CBC-MAC
 // with length prepending
@@ -354,13 +375,16 @@ function _TestFramework() {
   for(var i = 0; i < 30; i++) 
     passphrase += String.fromCharCode(Math.floor(Math.random() * 256));
   
-  var master_key = KeyDerivation(passphrase)[0];
-  var hmac_key = KeyDerivation(passphrase)[0];
+  var master_key = KeyDerivation(passphrase, 0);
+  var hmac_key = KeyDerivation(passphrase, 1);
 
   var originaltext = "";
   var ciphertext;
   var plaintext;
   var lengthofstring = Math.floor(Math.random() * 256) + 350;
+
+  var aes_hash = AES_DMHash("abcasdgasgdasdgdefg");
+  console.log(aes_hash);
 
   for(var i = 0; i < lengthofstring; i++) 
     originaltext += String.fromCharCode(Math.floor(Math.random() * 256));
@@ -439,6 +463,41 @@ function _TestFramework() {
 //
 /////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////
+
+/*
+ * createCookie, readCookie, and eraseCookie methods from http://www.quirksmode.org/js/cookies.html
+ */
+
+// Create a cookie for this site, with the given name.
+// The cookie expires at the end of session (when the browser is closed).
+// @param {String} name Name of the cookie (essentially a key into the "cookie-map").
+// @param {String} value Value.
+function createSessionCookie(name, value) {
+  // Expires at end of session.
+  var expires = "; expires=0";
+  document.cookie = name + "=" + escape(value) + expires + "; path=/";
+}
+
+// Read the cookie with the given name.
+function readCookie(name) {
+  var nameEQ = name + "=";
+  var ca = document.cookie.split(';');
+  for(var i = 0; i < ca.length; i++) {
+    var c = ca[i];
+    while(c.charAt(0) == ' ') {
+      c = c.substring(1, c.length);
+    }
+    if(c.indexOf(nameEQ) == 0) {
+      return unescape(c.substring(nameEQ.length, c.length));
+    }
+  }
+  return null;
+}
+
+// Completely remove a cookie with a given name.
+function eraseCookie(name) {
+  createCookie(name, "", -1);
+}
 
 // Get n 32-bit-integers entropy as an array. Defaults to 1 word
 function GetRandomValues(n) {
@@ -705,7 +764,7 @@ function UpdateKeysTable() {
   table.appendChild(row);
 
   // keys
-  for (var group in keys) {
+  for (group in keys) {
     var row = document.createElement('tr');
     row.setAttribute("data-group", group);
     var td = document.createElement('td');
@@ -1484,11 +1543,7 @@ sjcl.codec.base64url = {
 
 /** @namespace UTF-8 strings */
 sjcl.codec.utf8String = { /** Convert from a bitArray to a UTF-8 string. */
-  fromBits: function (arr) {
-    return decodeURIComponent(escape(sjcl.codec.utf8String.fromBits_noURI(arr)));
-  },
-
-  fromBits_noURI: function(arr) {
+  fromBits: function(arr) {
     var out = "",
       bl = sjcl.bitArray.bitLength(arr),
       i, tmp;
@@ -1499,7 +1554,7 @@ sjcl.codec.utf8String = { /** Convert from a bitArray to a UTF-8 string. */
       out += String.fromCharCode(tmp >>> 24);
       tmp <<= 8;
     }
-    return out;
+    return decodeURIComponent(escape(out));
   },
 
   /** Convert from a UTF-8 string to a bitArray. */
@@ -1521,302 +1576,6 @@ sjcl.codec.utf8String = { /** Convert from a bitArray to a UTF-8 string. */
   }
 };
 
-/** @fileOverview Password-based key-derivation function, version 2.0.
- *
- * @author Emily Stark
- * @author Mike Hamburg
- * @author Dan Boneh
- */
-
-/** Password-Based Key-Derivation Function, version 2.0.
- *
- * Generate keys from passwords using PBKDF2-HMAC-SHA256.
- *
- * This is the method specified by RSA's PKCS #5 standard.
- *
- * @param {bitArray|String} password  The password.
- * @param {bitArray} salt The salt.  Should have lots of entropy.
- * @param {Number} [count=1000] The number of iterations.  Higher numbers make the function slower but more secure.
- * @param {Number} [length] The length of the derived key.  Defaults to the
-                            output size of the hash function.
- * @param {Object} [Prff=sjcl.misc.hmac] The pseudorandom function family.
- * @return {bitArray} the derived key.
- */
-sjcl.misc.pbkdf2 = function (password, salt, count, length, Prff) {
-  count = count || 1000;
-  
-  if (length < 0 || count < 0) {
-    throw sjcl.exception.invalid("invalid params to pbkdf2");
-  }
-  
-  if (typeof password === "string") {
-    password = sjcl.codec.utf8String.toBits(password);
-  }
-  
-  Prff = Prff || sjcl.misc.hmac;
-  
-  var prf = new Prff(password),
-      u, ui, i, j, k, out = [], b = sjcl.bitArray;
-
-  for (k = 1; 32 * out.length < (length || 1); k++) {
-    u = ui = prf.encrypt(b.concat(salt,[k]));
-    
-    for (i=1; i<count; i++) {
-      ui = prf.encrypt(ui);
-      for (j=0; j<ui.length; j++) {
-        u[j] ^= ui[j];
-      }
-    }
-    
-    out = out.concat(u);
-  }
-
-  if (length) { out = b.clamp(out, length); }
-
-  return out;
-};
-
-/** @fileOverview HMAC implementation.
- *
- * @author Emily Stark
- * @author Mike Hamburg
- * @author Dan Boneh
- */
-
-/** HMAC with the specified hash function.
- * @constructor
- * @param {bitArray} key the key for HMAC.
- * @param {Object} [hash=sjcl.hash.sha256] The hash function to use.
- */
-
-// These functions are obfuscated for CS255, since you will be implementing HMAC yourself.
-sjcl.misc.hmac=function(a,b){
-  this.M=b=b||sjcl.hash.sha256;var c=[[],[]],d=b.prototype.blockSize/32;
-  this.l=[new b,new b];if(a.length>d)a=b.hash(a);
-  for(b=0;b<d;b++){c[0][b]=a[b]^0x36363636;c[1][b]=a[b]^0x5C5C5C5C}
-  this.l[0].update(c[0]);this.l[1].update(c[1]);
-};
-sjcl.misc.hmac.prototype.encrypt=sjcl.misc.hmac.prototype.mac=function(a,b){
-  a=(new this.M(this.l[0])).update(a,b).finalize();
-  return(new this.M(this.l[1])).update(a).finalize()
-};
-
-/** @fileOverview Javascript SHA-256 implementation.
- *
- * An older version of this implementation is available in the public
- * domain, but this one is (c) Emily Stark, Mike Hamburg, Dan Boneh,
- * Stanford University 2008-2010 and BSD-licensed for liability
- * reasons.
- *
- * Special thanks to Aldo Cortesi for pointing out several bugs in
- * this code.
- *
- * @author Emily Stark
- * @author Mike Hamburg
- * @author Dan Boneh
- */
-
-/**
- * Context for a SHA-256 operation in progress.
- * @constructor
- * @class Secure Hash Algorithm, 256 bits.
- */
-sjcl.hash.sha256 = function (hash) {
-  if (!this._key[0]) { this._precompute(); }
-  if (hash) {
-    this._h = hash._h.slice(0);
-    this._buffer = hash._buffer.slice(0);
-    this._length = hash._length;
-  } else {
-    this.reset();
-  }
-};
-
-/**
- * Hash a string or an array of words.
- * @static
- * @param {bitArray|String} data the data to hash.
- * @return {bitArray} The hash value, an array of 16 big-endian words.
- */
-sjcl.hash.sha256.hash = function (data) {
-  return (new sjcl.hash.sha256()).update(data).finalize();
-};
-
-sjcl.hash.sha256.prototype = {
-  /**
-   * The hash's block size, in bits.
-   * @constant
-   */
-  blockSize: 512,
-   
-  /**
-   * Reset the hash state.
-   * @return this
-   */
-  reset:function () {
-    this._h = this._init.slice(0);
-    this._buffer = [];
-    this._length = 0;
-    return this;
-  },
-  
-  /**
-   * Input several words to the hash.
-   * @param {bitArray|String} data the data to hash.
-   * @return this
-   */
-  update: function (data) {
-    if (typeof data === "string") {
-      data = sjcl.codec.utf8String.toBits(data);
-    }
-    var i, b = this._buffer = sjcl.bitArray.concat(this._buffer, data),
-        ol = this._length,
-        nl = this._length = ol + sjcl.bitArray.bitLength(data);
-    for (i = 512+ol & -512; i <= nl; i+= 512) {
-      this._block(b.splice(0,16));
-    }
-    return this;
-  },
-  
-  /**
-   * Complete hashing and output the hash value.
-   * @return {bitArray} The hash value, an array of 8 big-endian words.
-   */
-  finalize:function () {
-    var i, b = this._buffer, h = this._h;
-
-    // Round out and push the buffer
-    b = sjcl.bitArray.concat(b, [sjcl.bitArray.partial(1,1)]);
-    
-    // Round out the buffer to a multiple of 16 words, less the 2 length words.
-    for (i = b.length + 2; i & 15; i++) {
-      b.push(0);
-    }
-    
-    // append the length
-    b.push(Math.floor(this._length / 0x100000000));
-    b.push(this._length | 0);
-
-    while (b.length) {
-      this._block(b.splice(0,16));
-    }
-
-    this.reset();
-    return h;
-  },
-
-  /**
-   * The SHA-256 initialization vector, to be precomputed.
-   * @private
-   */
-  _init:[],
-  /*
-  _init:[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19],
-  */
-  
-  /**
-   * The SHA-256 hash key, to be precomputed.
-   * @private
-   */
-  _key:[],
-  /*
-  _key:
-    [0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-     0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-     0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-     0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-     0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-     0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-     0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-     0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2],
-  */
-
-
-  /**
-   * Function to precompute _init and _key.
-   * @private
-   */
-  _precompute: function () {
-    var i = 0, prime = 2, factor;
-
-    function frac(x) { return (x-Math.floor(x)) * 0x100000000 | 0; }
-
-    outer: for (; i<64; prime++) {
-      for (factor=2; factor*factor <= prime; factor++) {
-        if (prime % factor === 0) {
-          // not a prime
-          continue outer;
-        }
-      }
-      
-      if (i<8) {
-        this._init[i] = frac(Math.pow(prime, 1/2));
-      }
-      this._key[i] = frac(Math.pow(prime, 1/3));
-      i++;
-    }
-  },
-  
-  /**
-   * Perform one cycle of SHA-256.
-   * @param {bitArray} words one block of words.
-   * @private
-   */
-  _block:function (words) {  
-    var i, tmp, a, b,
-      w = words.slice(0),
-      h = this._h,
-      k = this._key,
-      h0 = h[0], h1 = h[1], h2 = h[2], h3 = h[3],
-      h4 = h[4], h5 = h[5], h6 = h[6], h7 = h[7];
-
-    /* Rationale for placement of |0 :
-     * If a value can overflow is original 32 bits by a factor of more than a few
-     * million (2^23 ish), there is a possibility that it might overflow the
-     * 53-bit mantissa and lose precision.
-     *
-     * To avoid this, we clamp back to 32 bits by |'ing with 0 on any value that
-     * propagates around the loop, and on the hash state h[].  I don't believe
-     * that the clamps on h4 and on h0 are strictly necessary, but it's close
-     * (for h4 anyway), and better safe than sorry.
-     *
-     * The clamps on h[] are necessary for the output to be correct even in the
-     * common case and for short inputs.
-     */
-    for (i=0; i<64; i++) {
-      // load up the input word for this round
-      if (i<16) {
-        tmp = w[i];
-      } else {
-        a   = w[(i+1 ) & 15];
-        b   = w[(i+14) & 15];
-        tmp = w[i&15] = ((a>>>7  ^ a>>>18 ^ a>>>3  ^ a<<25 ^ a<<14) + 
-                         (b>>>17 ^ b>>>19 ^ b>>>10 ^ b<<15 ^ b<<13) +
-                         w[i&15] + w[(i+9) & 15]) | 0;
-      }
-      
-      tmp = (tmp + h7 + (h4>>>6 ^ h4>>>11 ^ h4>>>25 ^ h4<<26 ^ h4<<21 ^ h4<<7) +  (h6 ^ h4&(h5^h6)) + k[i]); // | 0;
-      
-      // shift register
-      h7 = h6; h6 = h5; h5 = h4;
-      h4 = h3 + tmp | 0;
-      h3 = h2; h2 = h1; h1 = h0;
-
-      h0 = (tmp +  ((h1&h2) ^ (h3&(h1^h2))) + (h1>>>2 ^ h1>>>13 ^ h1>>>22 ^ h1<<30 ^ h1<<19 ^ h1<<10)) | 0;
-    }
-
-    h[0] = h[0]+h0 | 0;
-    h[1] = h[1]+h1 | 0;
-    h[2] = h[2]+h2 | 0;
-    h[3] = h[3]+h3 | 0;
-    h[4] = h[4]+h4 | 0;
-    h[5] = h[5]+h5 | 0;
-    h[6] = h[6]+h6 | 0;
-    h[7] = h[7]+h7 | 0;
-  }
-};
-
-
 // This is the initialization
 SetupUsernames();
 LoadKeys();
@@ -1826,8 +1585,10 @@ RegisterChangeEvents();
 
 console.log("CS255 script finished loading.");
 
+// Stub for phantom.js (http://phantomjs.org/)
 if (typeof phantom !== "undefined") {
   console.log("Hello! You're running in phantom.js.");
   _TestFramework();
   phantom.exit();
 }
+
