@@ -91,7 +91,10 @@ function GenerateKey(group) {
   SaveKeys();
 }
 
-// Take the current group keys, and save them to disk.
+// function SaveKeys()
+//
+// This saves all the group keys and HMAC keys into localStorage after encrypting everything
+// and make sure everything is saved
 function SaveKeys() {
   var master_passphrase = GetMasterKey();
   var key_str = JSON.stringify(keys);
@@ -121,14 +124,17 @@ function SaveKeys() {
   localStorage.setItem('facebook-keys-' + my_username, encodeURIComponent(key_str));
 }
 
-// Load the group keys from disk.
+// function LoadKeys()
+//
+// This loads the keys from the database, decrypts it and sticks it into a global variable so it is 
+// decrypted by the keying database
 function LoadKeys() {
   var master_passphrase = GetMasterKey();
 
   var encr_key;
   var hmac_key;
 
-  keys = {}; // Reset the keys.
+  keys = {}; // Reset the global keys.
   var saved = localStorage.getItem('facebook-keys-' + my_username);
 
   if (saved) {
@@ -160,17 +166,22 @@ function LoadKeys() {
   }
 }
 
-// Implements Encrypt-then-MAC with HMAC and AES primitives
-// to provide secrecy and prevent message tampering
-function Encrypt_And_Seal(enc_key, hmac_key, message) {
+// function Encrypt_And_Seal(enc_key, mac_key, message)
+//
+// Implements Encryption and Sealing by encryption a message with the enc_key
+// then MACing the result with the MAC key. It base64 encodes the result and
+// returns it as a string
+function Encrypt_And_Seal(enc_key, mac_key, message) {
   var encrypted_message = AES_Encrypt_String(enc_key, message);
-  var hmac = AES_CBCMAC(hmac_key, encrypted_message);
+  var mac = AES_CBCMAC(mac_key, encrypted_message);
 
-  return window.btoa(hmac + encrypted_message);
+  return window.btoa(mac + encrypted_message);
 }
 
-// Complement function to Encrypt_And_Seal
-// Returns null if message found to be tampered
+// function Decrypt_and_Unseal(enc_key, mac_key, message)
+//
+// Implements the Decryption and Unsealing by first verifying that the message
+// is not tampered by verifying the MAC, then decrypting it.
 function Decrypt_And_Unseal(enc_key, hmac_key, message) {
   var decoded_message;
   try {
@@ -190,8 +201,11 @@ function Decrypt_And_Unseal(enc_key, hmac_key, message) {
   return AES_Decrypt_String(enc_key, alleged_ctx);
 }
 
+// function AES_Extract_Block(str)
+//
+// This puts an arbitrary AES string into arrays of 32-bit integers each
 function AES_Extract_Block(str) {
-  var data = new Array(4);
+  var data = new Array(Math.ceil(str.length / 4));
 
   for(var i = 0; i < Math.ceil(str.length / 4); i++) {
     data[i] = 0;
@@ -204,6 +218,9 @@ function AES_Extract_Block(str) {
   return data;
 }
 
+// function AES_Reconstruct_String(block)
+//
+// Given an array of AES blocks, reconstruct the string in question.
 function AES_Reconstruct_String(block) {
   var str = "";
   var data = Array.prototype.slice.call(block);
@@ -302,7 +319,11 @@ function getLength(str) {
   return length;
 }
 
-// 128-bit 1000 round PBKDF2 implemented on top of AES Davies Meyer hashing
+// function KeyDerivation(pass, salt)
+//
+// Implements key derivation with either a supplied salt or 
+// a securely generated random salt. Returns both the key and
+// the salt
 function KeyDerivation(password, salt) {
   var salt, key;
 
@@ -319,6 +340,10 @@ function KeyDerivation(password, salt) {
 
 // AES CBC MAC at http://en.wikipedia.org/wiki/CBC-MAC
 // with length prepending
+//
+// We argue that length prepending is secure because CBC-MAC with the additional
+// encryption step is secure as long as no two messages that are prefixes of each
+// other are ever used and this is a special case.
 function AES_CBCMAC(key, message) {
   var cipher = new sjcl.cipher.aes(key);
 
@@ -349,6 +374,7 @@ function AES_CBCMAC(key, message) {
   return hash;
 }
 
+// Tests
 function _TestFramework() {
   var passphrase = "";
   for(var i = 0; i < 30; i++) 
