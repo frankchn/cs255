@@ -134,6 +134,9 @@ function LoadKeys() {
   var encr_key;
   var hmac_key;
 
+  var encr_salt;
+  var hmac_salt;
+
   keys = {}; // Reset the global keys.
   var saved = localStorage.getItem('facebook-keys-' + my_username);
 
@@ -141,8 +144,8 @@ function LoadKeys() {
     encr_salt = JSON.parse(decodeURIComponent(localStorage.getItem('facebook-salt-encr-' + my_username)));
     hmac_salt = JSON.parse(decodeURIComponent(localStorage.getItem('facebook-salt-hmac-' + my_username)));
 
-    encr_key = KeyDerivation(master_passphrase, encr_salt);
-    hmac_key = KeyDerivation(master_passphrase, hmac_salt);
+    encr_key = KeyDerivation(master_passphrase, encr_salt)[0];
+    hmac_key = KeyDerivation(master_passphrase, hmac_salt)[0];
 
     var key_str = decodeURIComponent(saved);
     var plain_str = Decrypt_And_Unseal(encr_key, hmac_key, key_str);
