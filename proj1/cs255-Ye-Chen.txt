@@ -3,21 +3,83 @@ CS255 Project 1 Milestone 1 README
 
 1) Secure Key Storage Database
 
+The group keys are stored as follows: the user's key database password
+together with a fixed, hard-coded 128-bit salt is used to derive a key using
+the standard derivation function PBKDF2. We then use the derived key to apply the same AES-based
+encryption scheme to the group keys that we use for the message
+itself (described later). We store only the encrypted group keys. This should be secure as
+long as PBKDF2 and AES-CTR-128 are themselves secure; the only weakness is
+the user's choice of password, which we have no control over (and the salt
+offers some defense).
+
+Accessing the keys consists of wiping out any information floating around
+from previous sessions, computing the derived key from the entered
+password and the fixed salt, and attempting to decrypt the database using
+the derived key. If the decryption fails (because of our MAC
+implementation, which we do not discuss here), no information is given to
+the user.
+
 2) New Key Generation
 
 We use the cryptographic primitives provided by Google Chrome and other Webkit 
 browsers with the window.crypto.getRandomValues function, as suggested by the
-handout.
+handout, to generate a (pseudo-)random 128-bit key for each group. This is large
+enough that brute-force attacks are infeasible.
 
 3) Encrypt and Decryption Functions
 
 We chose to implement AES-CTR-128 for encryption and decryption because of its
-simplicity and ease of implementation.
+simplicity and ease of implementation. When encrypting, we use a random
+128-bit nonce which is stored in plaintext near the beginning of the
+message, just before the encrypted ciphertext. The usual birthday
+calculation shows that we expect to see some nonce twice after 2^56
+draws. We think the probability of one key being used 2^56 times is
+sufficiently low that this is not a problem.
 
-Our message format is length (4-bytes) || nonce (16-bytes) || message blocks
+In addition to the nonce, the length of the message in plaintext is
+prepended to the beginning of the message (so our message format is length
+(4-bytes) || nonce (16-bytes) || message blocks) as a defense against
+attacks involving appending extra text to the end of a message, and its
+integrity is protected by CBC-MAC (which we do not discuss here). This
+enforces the fact that no two messages will be sent for which one is a
+prefix of the other, which is necessary for CBC-MAC.
+
+As in standard CTR, we pass the key and the sum of the nonce and a counter
+to AES, then xor the result with the appropriate block of the plaintext
+message. Decryption consists of reading off the message length and the nonce, using
+the given key and the nonce to recreate the AES stream, and xoring with
+the ciphertext. Since we know the intended length of the message, we stop when we've gone
+through enough blocks to see the whole message. This is a further defense
+against text being appended by an attacker. If the decryption fails, no
+information is revealed to the user.
+
+We note that counter mode is one of two recommended block cipher modes
+(the other being CBC), with no known weaknesses as long as the block
+cipher is secure, which AES on 128-bit keys is believed to be.
+
+(Do we need to specifically discuss IND-CPA here? I don't quite see how it
+fits in.)
 
 4) Message Authentication Code
 
 TODO: NEED TO IMPLEMENT AES MAC
 
 5) Comments about Cryptography in the Browser
+
+(I have no idea what to say here, but I'll try anyway?)
+
+Human weakness is an unavoidable part of cryptography in the
+browser. Ultimately, the keys and hence the messages are protected by a
+single password, a necessary consequence of allowing anyone to decrypt the
+messages at all, so a guessable password defeats the purpose of the entire
+implementation. Physical access to a logged-in account has similar
+results. Also, the matter of what information the browser sends
+or stores at what time, regardless of what our code tells it to do, is one
+we do not necessarily have control over. Nevertheless, we have to send
+information securely across the internet constantly, so every layer of
+security makes things a little better.
+
+6) How could this implementation be circumvented if someone "really wanted
+to"?
+
+Not sure what to say here either.
