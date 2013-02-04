@@ -2,7 +2,7 @@
 // @namespace      CS255-Ye-Chen
 // @name           CS255-Ye-Chen
 // @description    CS255-Ye-Chen - CS255 Assignment 1
-// @version        1.4
+// @version        1.5
 //
 // 
 // @include        http://www.facebook.com/*
@@ -33,9 +33,15 @@ var encr_salt = [835321111, 654580139, 3647273891, 533939597];
 
 function GetMasterKey() {
   if(master_key !== null) return master_key;
-  if(sessionStorage.fb_master_key !== undefined) return sessionStorage.fb_master_key;
+  if(sessionStorage.fb_master_key !== undefined && sessionStorage.fb_master_key !== null) return sessionStorage.fb_master_key;
 
   master_key = prompt("Please enter your master key for encryption and decryption");
+
+  if(master_key === null) {
+    alert("You need to enter something!");
+    throw "Prompt dismissed without entering anything";
+  }
+
   sessionStorage.fb_master_key = master_key;
 
   return master_key;
@@ -53,8 +59,9 @@ function Encrypt(plainText, group) {
   if(!(group in keys))
     GenerateKey(group);
 
-  var encr_key = KeyDerivation(keys[group], KeyDerivation(group, encr_salt)[0])[0];
-  var hmac_key = KeyDerivation(keys[group], KeyDerivation(group, hmac_salt)[0])[0];
+  var raw_key = window.atob(keys[group]);
+  var encr_key = AES_Extract_Block(raw_key.substring(0, 16));
+  var hmac_key = AES_Extract_Block(raw_key.substring(16, 32));
 
   return Encrypt_And_Seal(encr_key, hmac_key, plainText);
 }
@@ -69,8 +76,9 @@ function Decrypt(cipherText, group) {
   if(!(group in keys))
     throw "Have not seen keys for group before. Cannot decrypt message.";
 
-  var encr_key = KeyDerivation(keys[group], KeyDerivation(group, encr_salt)[0])[0];
-  var hmac_key = KeyDerivation(keys[group], KeyDerivation(group, hmac_salt)[0])[0];
+  var raw_key = window.atob(keys[group]);
+  var encr_key = AES_Extract_Block(raw_key.substring(0, 16));
+  var hmac_key = AES_Extract_Block(raw_key.substring(16, 32));
 
   var decr_text = Decrypt_And_Unseal(encr_key, hmac_key, cipherText);
   if(decr_text === null)
@@ -83,7 +91,7 @@ function Decrypt(cipherText, group) {
 //
 // @param {String} group Group name.
 function GenerateKey(group) {
-  var r = GetRandomValues(9);
+  var r = GetRandomValues(8);
 
   keys[group] = window.btoa(AES_Reconstruct_String(r));
 
@@ -92,7 +100,7 @@ function GenerateKey(group) {
 
 // function SaveKeys()
 //
-// This saves all the group keys and HMAC keys into localStorage after encrypting everything
+// This saves all the group keys and HMAC keys into cs255.localStorage after encrypting everything
 // and make sure everything is saved
 function SaveKeys() {
   var master_passphrase = GetMasterKey();
@@ -100,8 +108,8 @@ function SaveKeys() {
 
   var encr_a, hmac_a;
 
-  var encr_salt = JSON.parse(decodeURIComponent(localStorage.getItem('facebook-salt-encr-' + my_username)));
-  var hmac_salt = JSON.parse(decodeURIComponent(localStorage.getItem('facebook-salt-hmac-' + my_username)));
+  var encr_salt = JSON.parse(decodeURIComponent(cs255.localStorage.getItem('facebook-salt-encr-' + my_username)));
+  var hmac_salt = JSON.parse(decodeURIComponent(cs255.localStorage.getItem('facebook-salt-hmac-' + my_username)));
 
   if(encr_salt && hmac_salt) {
     encr_a = KeyDerivation(master_passphrase, encr_salt);
@@ -114,13 +122,13 @@ function SaveKeys() {
   var encr_key = encr_a[0];
   var hmac_key = encr_a[0];
 
-  localStorage.setItem('facebook-salt-encr-' + my_username, 
+  cs255.localStorage.setItem('facebook-salt-encr-' + my_username, 
     encodeURIComponent(JSON.stringify(encr_a[1])));
-  localStorage.setItem('facebook-salt-hmac-' + my_username, 
+  cs255.localStorage.setItem('facebook-salt-hmac-' + my_username, 
     encodeURIComponent(JSON.stringify(encr_a[1])));
 
   key_str = Encrypt_And_Seal(encr_key, hmac_key, key_str);
-  localStorage.setItem('facebook-keys-' + my_username, encodeURIComponent(key_str));
+  cs255.localStorage.setItem('facebook-keys-' + my_username, encodeURIComponent(key_str));
 }
 
 // function LoadKeys()
@@ -129,7 +137,6 @@ function SaveKeys() {
 // decrypted by the keying database
 function LoadKeys() {
   var master_passphrase = GetMasterKey();
-
   var encr_key;
   var hmac_key;
 
@@ -137,11 +144,13 @@ function LoadKeys() {
   var hmac_salt;
 
   keys = {}; // Reset the global keys.
-  var saved = localStorage.getItem('facebook-keys-' + my_username);
+  var saved = cs255.localStorage.getItem('facebook-keys-' + my_username);
+
+  console.log(saved);
 
   if (saved) {
-    encr_salt = JSON.parse(decodeURIComponent(localStorage.getItem('facebook-salt-encr-' + my_username)));
-    hmac_salt = JSON.parse(decodeURIComponent(localStorage.getItem('facebook-salt-hmac-' + my_username)));
+    encr_salt = JSON.parse(decodeURIComponent(cs255.localStorage.getItem('facebook-salt-encr-' + my_username)));
+    hmac_salt = JSON.parse(decodeURIComponent(cs255.localStorage.getItem('facebook-salt-hmac-' + my_username)));
 
     encr_key = KeyDerivation(master_passphrase, encr_salt)[0];
     hmac_key = KeyDerivation(master_passphrase, hmac_salt)[0];
@@ -149,8 +158,12 @@ function LoadKeys() {
     var key_str = decodeURIComponent(saved);
     var plain_str = Decrypt_And_Unseal(encr_key, hmac_key, key_str);
 
-    if(plain_str === null) 
+    if(plain_str === null) {
+      alert("Unable to decrypt. Did you enter the wrong passphrase?");
+      sessionStorage.clear();
+      master_key = null;
       throw "Unable to decrypt. Did you enter the wrong passphrase?";
+    }
 
     keys = JSON.parse(plain_str);
   } else {
@@ -160,9 +173,9 @@ function LoadKeys() {
     encr_key = encr_a[0];
     hmac_key = hmac_a[0];
 
-    localStorage.setItem('facebook-salt-encr-' + my_username, 
+    cs255.localStorage.setItem('facebook-salt-encr-' + my_username, 
       encodeURIComponent(JSON.stringify(encr_a[1])));
-    localStorage.setItem('facebook-salt-hmac-' + my_username, 
+    cs255.localStorage.setItem('facebook-salt-hmac-' + my_username, 
       encodeURIComponent(JSON.stringify(encr_a[1])));
     
   }
@@ -251,6 +264,10 @@ function AES_Reconstruct_String(block) {
 // semantic security since the message length is the same. Also, combining this
 // with Encrypt-then-MAC HMAC will resolve integrity issues (i.e. attackers zeroing)
 // the length field
+//
+// We assert that this is CPA secure because we have at least 2^96 random values (the
+// first 96-bit nonces). By the birthday attack, it is unlikely to happen without at
+// least 2^48 messages being encrypted.
 
 function AES_Encrypt_String(key, plaintext) {
   var nonce = GetRandomValues(4);
@@ -258,6 +275,10 @@ function AES_Encrypt_String(key, plaintext) {
   var cipher = new sjcl.cipher.aes(key);
   var ciphertext = setLength(plaintext.length) + AES_Reconstruct_String(nonce);
   var num_blocks = Math.ceil(plaintext.length / 16);
+
+  // this is to prevent wrap around from happening since we are only updating the
+  // last 32-bit field of the nonce
+  if(num_blocks >= 2147483647) throw "Message too long!";
 
   for(var i = 0; i < num_blocks; i++) {
     var data = Array.prototype.slice.call(nonce);
@@ -284,6 +305,8 @@ function AES_Decrypt_String(key, nonceciphertext) {
 
   var ciphertext = nonceciphertext.substr(20);
   var num_blocks = Math.ceil(ciphertext.length / 16);
+
+  if(num_blocks >= 2147483647) throw "Message too long!";
 
   for(var i = 0; i < num_blocks; i++) {
     var data = Array.prototype.slice.call(nonce);
@@ -405,8 +428,8 @@ function _TestFramework() {
   var failure_2 = Decrypt_And_Unseal(master_key, hmac_key, authenticated_msg.substring(0, authenticated_msg.length - 10));
   var failure_3 = Decrypt_And_Unseal(master_key, hmac_key, authenticated_msg.substring(0, 40) + 'ABCDEFGH' + authenticated_msg.substring(48));
 
-  var saved_ciphertext = "ZGY4NWU1NDFiOGM1ZGYzMmM2NmEyYmJiZmQ1NTY0MDUmAAAARrkTIE0mk2D+xN3PHtj0Gq/56mMuaHDIslPh6ObHTokUoCv641MJFnWza7HvCkGkKjjtdysUC1KGPppLxGODWw==";
-  keys['testgroup'] = 'JYqoql/HjrOCvyrgqOG6O78N6KjODVAb+DqQK54S56dXlOAg';
+  var saved_ciphertext = "MzgzYmIyZTY5NThmMzI2ZTc1ZTY4OTZkZDY3ZTBkNmQTAAAAjVzBLHkkjTX/A+2ofZDIE33T/yjhZ2Qr7wvAP3p/wTTH353Y12DLL3B50MBj/YMq";
+  keys['testgroup'] = 'Vqn+Yi+31yr2dBKSse8cYkzWjV/iateGk7M2SR/W6Bc=';
 
   console.log("================ CRYPTOGRAPHIC PRIMITIVES VERIFICATION TESTS ================");
 
@@ -420,6 +443,8 @@ function _TestFramework() {
   console.log("Decrypt Random Thing: " + Decrypt(Encrypt("random test of encr", "randomgroup"), "randomgroup"));
   console.log("Key Generated: " + keys['randomgroup']);
   console.log("Decrypt Saved Thing: " + Decrypt(saved_ciphertext, 'testgroup'));
+
+  keys = {};
 }
 
 
@@ -474,6 +499,45 @@ function _TestFramework() {
 //
 /////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////
+
+// Addition to v1.5 of code
+var cs255 = {
+  localStorage: {
+    setItem: function(key, value) {
+      localStorage.setItem(key, value);
+      var newEntries = {};
+      newEntries[key] = value;
+      chrome.storage.local.set(newEntries);
+    },
+    getItem: function(key) {
+      return localStorage.getItem(key);
+    },
+    clear: function() {
+      chrome.storage.local.clear();
+    }
+  }
+}
+
+if (typeof chrome === "undefined") {
+  cs255 = {
+    localStorage: {
+      setItem: function(key, value) { localStorage.setItem(key, value); },
+      getItem: function(key) { return localStorage.getItem(key); },
+      clear: function() { localStorage.clear(); }
+    }
+  };
+} else if (typeof chrome.storage === "undefined") {
+  var id = function() {};
+  chrome.storage = {local: {get: id, set: id}};
+}
+else {
+  // See if there are any values stored with the extension.
+  chrome.storage.local.get(null, function(onDisk) {
+    for (key in onDisk) {
+      localStorage.setItem(key, onDisk[key]);
+    }
+  });
+}
 
 // Get n 32-bit-integers entropy as an array. Defaults to 1 word
 function GetRandomValues(n) {
@@ -1851,6 +1915,11 @@ sjcl.hash.sha256.prototype = {
   }
 };
 
+// If we are running in phantom
+if (typeof phantom !== "undefined") {
+  console.log("You are running in PhantomJS. We are running the test suite. Clearing local storage.");
+  cs255.localStorage.clear();
+}
 
 // This is the initialization
 SetupUsernames();
