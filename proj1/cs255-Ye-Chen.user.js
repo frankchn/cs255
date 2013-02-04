@@ -28,6 +28,9 @@ var my_username; // user signed in as
 var keys = {}; // association map of keys: group -> key
 var master_key = null;
 
+var hmac_salt = [1366751154, 3721230566, 2113622520, 852058995];
+var encr_salt = [835321111, 654580139, 3647273891, 533939597];
+
 function GetMasterKey() {
   if(master_key !== null) return master_key;
   if(sessionStorage.fb_master_key !== undefined) return sessionStorage.fb_master_key;
@@ -50,8 +53,8 @@ function Encrypt(plainText, group) {
   if(!(group in keys))
     GenerateKey(group);
 
-  var encr_key = keys[group]['encr'];
-  var hmac_key = keys[group]['hmac'];
+  var encr_key = KeyDerivation(keys[group], KeyDerivation(group, encr_salt)[0])[0];
+  var hmac_key = KeyDerivation(keys[group], KeyDerivation(group, hmac_salt)[0])[0];
 
   return Encrypt_And_Seal(encr_key, hmac_key, plainText);
 }
@@ -66,8 +69,8 @@ function Decrypt(cipherText, group) {
   if(!(group in keys))
     throw "Have not seen keys for group before. Cannot decrypt message.";
 
-  var encr_key = keys[group]['encr'];
-  var hmac_key = keys[group]['hmac'];
+  var encr_key = KeyDerivation(keys[group], KeyDerivation(group, encr_salt)[0])[0];
+  var hmac_key = KeyDerivation(keys[group], KeyDerivation(group, hmac_salt)[0])[0];
 
   var decr_text = Decrypt_And_Unseal(encr_key, hmac_key, cipherText);
   if(decr_text === null)
@@ -80,14 +83,10 @@ function Decrypt(cipherText, group) {
 //
 // @param {String} group Group name.
 function GenerateKey(group) {
+  var r = GetRandomValues(9);
 
-  // this generates a random 128-bit key using crypto primitives
-  var encr_key = GetRandomValues(4);
-  var hmac_key = GetRandomValues(4);
+  keys[group] = window.btoa(AES_Reconstruct_String(r));
 
-  keys[group] = {};
-  keys[group]['encr'] = encr_key;
-  keys[group]['hmac'] = hmac_key;
   SaveKeys();
 }
 
@@ -406,6 +405,9 @@ function _TestFramework() {
   var failure_2 = Decrypt_And_Unseal(master_key, hmac_key, authenticated_msg.substring(0, authenticated_msg.length - 10));
   var failure_3 = Decrypt_And_Unseal(master_key, hmac_key, authenticated_msg.substring(0, 40) + 'ABCDEFGH' + authenticated_msg.substring(48));
 
+  var saved_ciphertext = "ZGY4NWU1NDFiOGM1ZGYzMmM2NmEyYmJiZmQ1NTY0MDUmAAAARrkTIE0mk2D+xN3PHtj0Gq/56mMuaHDIslPh6ObHTokUoCv641MJFnWza7HvCkGkKjjtdysUC1KGPppLxGODWw==";
+  keys['testgroup'] = 'JYqoql/HjrOCvyrgqOG6O78N6KjODVAb+DqQK54S56dXlOAg';
+
   console.log("================ CRYPTOGRAPHIC PRIMITIVES VERIFICATION TESTS ================");
 
   console.log("Blank AES_CBCMAC: " + authenticated);
@@ -414,6 +416,10 @@ function _TestFramework() {
   console.log("Does Unseal Fail Correctly (1 - Appending): " + (failure_1 == null ? "PASS" : "FAIL"));
   console.log("Does Unseal Fail Correctly (2 - Removal): " + (failure_2 == null ? "PASS" : "FAIL"));
   console.log("Does Unseal Fail Correctly (3 - Changing Text): " + (failure_3 == null ? "PASS" : "FAIL"));
+  console.log("Encrypt Random Thing: " + Encrypt("random test of encr", "randomgroup"));
+  console.log("Decrypt Random Thing: " + Decrypt(Encrypt("random test of encr", "randomgroup"), "randomgroup"));
+  console.log("Key Generated: " + keys['randomgroup']);
+  console.log("Decrypt Saved Thing: " + Decrypt(saved_ciphertext, 'testgroup'));
 }
 
 
