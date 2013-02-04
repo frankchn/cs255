@@ -23,8 +23,9 @@ the user.
 
 We use the cryptographic primitives provided by Google Chrome and other Webkit 
 browsers with the window.crypto.getRandomValues function, as suggested by the
-handout, to generate a (pseudo-)random 128-bit key for each group. This is large
-enough that brute-force attacks are infeasible.
+handout, to generate a (pseudo-)random 288-bit key for each group. This is
+large enough even if we have to switch to AES-256, and a brute-force
+attack on it is certainly infeasible.
 
 3) Encrypt and Decryption Functions
 
