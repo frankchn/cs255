@@ -120,12 +120,12 @@ function SaveKeys() {
   }
 
   var encr_key = encr_a[0];
-  var hmac_key = encr_a[0];
+  var hmac_key = hmac_a[0];
 
   cs255.localStorage.setItem('facebook-salt-encr-' + my_username, 
     encodeURIComponent(JSON.stringify(encr_a[1])));
   cs255.localStorage.setItem('facebook-salt-hmac-' + my_username, 
-    encodeURIComponent(JSON.stringify(encr_a[1])));
+    encodeURIComponent(JSON.stringify(hmac_a[1])));
 
   key_str = Encrypt_And_Seal(encr_key, hmac_key, key_str);
   cs255.localStorage.setItem('facebook-keys-' + my_username, encodeURIComponent(key_str));
@@ -176,7 +176,7 @@ function LoadKeys() {
     cs255.localStorage.setItem('facebook-salt-encr-' + my_username, 
       encodeURIComponent(JSON.stringify(encr_a[1])));
     cs255.localStorage.setItem('facebook-salt-hmac-' + my_username, 
-      encodeURIComponent(JSON.stringify(encr_a[1])));
+      encodeURIComponent(JSON.stringify(hmac_a[1])));
     
   }
 }
