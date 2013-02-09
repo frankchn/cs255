@@ -60,7 +60,7 @@ In addition to the nonce, the length of the message in plaintext is
 prepended to the beginning of the message (so our message format is length
 (4-bytes) || nonce (16-bytes) || message blocks) as a defense against
 attacks involving appending extra text to the end of a message, and its
-integrity is protected by CBC-MAC (which we do not discuss here). This
+integrity is protected by CBC-MAC (which we discuss later). This
 enforces the fact that no two messages will be sent for which one is a
 prefix of the other, which is necessary for CBC-MAC.
 
@@ -82,7 +82,37 @@ cipher is secure, which AES on 128-bit keys is believed to be.
 
 4) Message Authentication Code
 
-(Not discussed in Milestone 1)
+We apply message authentication to both the stored keys and the message
+itself. We use the CBC-MAC algorithm, in which we apply AES CBC to the
+message, with zero initialization vector and the MAC key, and output the
+final ciphertext block as our authentication code. 
+
+Note that instead of
+further encrypting the result with a second key, which would in particular
+require having and storing a
+second key, we prevent the standard attack on this scheme by prepending the length of the message to the nonce/ciphertext
+pair before applying MAC to it, as
+described previously. This implies that no message is ever a prefix of
+another distinct message, since this would require the portion after the
+length field to also be a prefix of the corresponding portion in the other
+message, but then it would have a shorter length and its first few
+characters would be different. CBC-MAC without further encryption has been
+proven secure if no two distinct messages are ever prefixes of each other,
+so this is sufficient to ensure our system's integrity by industry standards. This solution is sometimes avoided due to the need
+to know the length of the message beforehand, but that is not a problem
+for us.
+
+The MAC is added to the beginning of the message after encryption. During
+decryption, we first check that AES CBC applied to the stored MAC key and the
+given ciphertext produces the same MAC before decrypting the message. The
+check is done naively, so we have no defense against timing attacks, but
+as described below, JavaScript tends to optimize away such defenses in any
+case, so this is essentially the best we can do.
+
+As mentioned above, the key database goes through the same process during
+storage and loading, using the MAC key derived from the user's key
+database password and a fixed global salt. This ensures the integrity of
+the key database by industry standards. 
 
 5) Comments about Cryptography in the Browser
 
