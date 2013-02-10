@@ -87,20 +87,20 @@ itself. We use the CBC-MAC algorithm, in which we apply AES CBC to the
 message, with zero initialization vector and the MAC key, and output the
 final ciphertext block as our authentication code. 
 
-Note that instead of
-further encrypting the result with a second key, which would in particular
-require having and storing a
-second key, we prevent the standard attack on this scheme by prepending the length of the message to the nonce/ciphertext
-pair before applying MAC to it, as
-described previously. This implies that no message is ever a prefix of
-another distinct message, since this would require the portion after the
-length field to also be a prefix of the corresponding portion in the other
-message, but then it would have a shorter length and its first few
-characters would be different. CBC-MAC without further encryption has been
-proven secure if no two distinct messages are ever prefixes of each other,
-so this is sufficient to ensure our system's integrity by industry standards. This solution is sometimes avoided due to the need
-to know the length of the message beforehand, but that is not a problem
-for us.
+Note that instead of further encrypting the result with a second key, which 
+would in particular require having and storing a second key, we prevent the 
+standard attack on this scheme by prepending the length of the message to the 
+nonce/ciphertext pair before applying MAC to it, as described previously. 
+
+This implies that no message is ever a prefix of another distinct message, 
+since this would require the portion after the length field to also be a 
+prefix of the corresponding portion in the other message, but then it would 
+have a shorter length and its first few characters would be different. 
+CBC-MAC without further encryption has been proven secure if no two distinct 
+messages are ever prefixes of each other, so this is sufficient to ensure our 
+system's integrity by industry standards. This solution is sometimes avoided 
+due to the need to know the length of the message beforehand, but that is not 
+a problem for us.
 
 The MAC is added to the beginning of the message after encryption. During
 decryption, we first check that AES CBC applied to the stored MAC key and the
