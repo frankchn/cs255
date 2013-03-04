@@ -159,7 +159,7 @@ public class HTTPSProxyEngine extends ProxyEngine
                     //   (Recall that we, as a MITM, obtain the server's actual certificate from our own session as a client
                     //    to that server.)
                     javax.security.cert.X509Certificate[] serverCertChain = remoteSession.getPeerCertificateChain();
-                    //iaik.x509.X509Certificate serverCertificate = serverCertChain[0];
+                    iaik.x509.X509Certificate serverCertificate = (iaik.x509.X509Certificate) serverCertChain[0];
                     Principal serverDN = serverCertChain[0].getSubjectDN();
                     BigInteger serverSerialNumber = serverCertChain[0].getSerialNumber();
 
