@@ -4,6 +4,8 @@
 
 package mitm;
 
+import java.io.*;
+import java.util.*;
 import java.io.FileWriter;
 import java.io.PrintWriter;
 
@@ -14,6 +16,9 @@ import java.io.PrintWriter;
 
 public class MITMProxyServer
 {
+
+    public static List<String> passwords = new ArrayList<String>();
+
     public static void main(String[] args) {
         final MITMProxyServer proxy = new MITMProxyServer(args);
         proxy.run();
@@ -88,7 +93,15 @@ public class MITMProxyServer
                 } else if (args[i].equals("-timeout")) {
                     timeout = Integer.parseInt(args[++i]) * 1000;
                 } else if( args[i].equals("-pwdFile")) {
-                        i++; // TODO(cs255): parse this as needed
+                        try {
+                            BufferedReader br = new BufferedReader(new FileReader(args[++i]));
+                            String line;
+                            while((line = br.readLine()) != null) {
+                                passwords.add(line);
+                            }
+                        } catch (IOException e) {
+                            throw new RuntimeException("Cannot open file!");
+                        }
                 } else if (args[i].equals("-adminPort")) {
                         adminPort = Integer.parseInt(args[++i]);
                 } else if (args[i].equals("-outputFile")) {

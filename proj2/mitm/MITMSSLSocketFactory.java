@@ -47,6 +47,7 @@ public final class MITMSSLSocketFactory implements MITMSocketFactory
     final SSLContext m_sslContext;
 
     public KeyStore ks = null;
+    public static int socketinit = 0;
 
     /*
      *
@@ -69,6 +70,7 @@ public final class MITMSSLSocketFactory implements MITMSocketFactory
     public MITMSSLSocketFactory()
         throws IOException,GeneralSecurityException
     {
+        socketinit++;
         m_sslContext = SSLContext.getInstance("SSL");
 
         final KeyManagerFactory keyManagerFactory =
@@ -107,6 +109,7 @@ public final class MITMSSLSocketFactory implements MITMSocketFactory
     public MITMSSLSocketFactory(Principal serverDN, BigInteger serialNumber)
         throws IOException,GeneralSecurityException, Exception
     {
+        socketinit++;
         //this();
         // TODO(cs255): replace this with code to generate a new (forged) server certificate with a DN of serverDN
         //   and a serial number of serialNumber.
