@@ -157,8 +157,12 @@ public final class MITMSSLSocketFactory implements MITMSocketFactory
 
         if(privateKey.getAlgorithm().equals("DSA"))
             serverCertificate.sign(AlgorithmID.dsaWithSHA1, privateKey);
+        else if(privateKey.getAlgorithm().equals("RSA"))
+            serverCertificate.sign(AlgorithmID.sha1WithRSAEncryption, privateKey);
         else
             throw new RuntimeException("Unrecognized Signing Method!");
+
+        System.out.println(serverCertificate);
 
         KeyStore serverKeyStore = KeyStore.getInstance(keyStoreType);
         serverKeyStore.load(null, keyStorePassword);
