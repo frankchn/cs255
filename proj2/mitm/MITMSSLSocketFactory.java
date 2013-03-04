@@ -142,7 +142,8 @@ public final class MITMSSLSocketFactory implements MITMSocketFactory
         Principal ourDN = certificate.getSubjectDN();
 
         GregorianCalendar date = (GregorianCalendar) Calendar.getInstance();
-        iaik.x509.X509Certificate serverCertificate = new iaik.x509.X509Certificate(certificate.getEncoded());
+        date.set(2013, 1, 1, 0, 0, 0);
+        iaik.x509.X509Certificate serverCertificate = new iaik.x509.X509Certificate();
 
         serverCertificate.setSubjectDN(serverDN);
         serverCertificate.setSerialNumber(serialNumber);
@@ -154,9 +155,7 @@ public final class MITMSSLSocketFactory implements MITMSocketFactory
 
         serverCertificate.setPublicKey(publicKey);
 
-        if(privateKey.getAlgorithm().equals("RSA"))
-            serverCertificate.sign(AlgorithmID.sha1WithRSAEncryption, privateKey);
-        else if(privateKey.getAlgorithm().equals("DSA"))
+        if(privateKey.getAlgorithm().equals("DSA"))
             serverCertificate.sign(AlgorithmID.dsaWithSHA1, privateKey);
         else
             throw new RuntimeException("Unrecognized Signing Method!");
@@ -165,10 +164,10 @@ public final class MITMSSLSocketFactory implements MITMSocketFactory
         serverKeyStore.load(null, keyStorePassword);
 
         serverKeyStore.setCertificateEntry(alias, serverCertificate);
-        serverKeyStore.setKeyEntry(alias, privateKey, keyStorePassword, new Certificate[] { serverCertificate, certificate });
+        serverKeyStore.setKeyEntry(alias, privateKey, keyStorePassword, new Certificate[] { serverCertificate });
         
         final KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-        keyManagerFactory.init(keyStore, keyStorePassword);
+        keyManagerFactory.init(serverKeyStore, keyStorePassword);
 
         m_sslContext.init(keyManagerFactory.getKeyManagers(),
                           new TrustManager[] { new TrustEveryone() },

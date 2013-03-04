@@ -56,6 +56,8 @@ public class HTTPSProxyEngine extends ProxyEngine
     private final Pattern m_httpsConnectPattern;
 
     private final ProxySSLEngine m_proxySSLEngine;
+
+    private final HashMap<Principal, MITMSSLSocketFactory> dnMap = new HashMap<Principal, MITMSSLSocketFactory>();
     
     public HTTPSProxyEngine(MITMPlainSocketFactory plainSocketFactory,
                             MITMSSLSocketFactory sslSocketFactory,
@@ -259,7 +261,10 @@ public class HTTPSProxyEngine extends ProxyEngine
         }
 
         public final ServerSocket createServerSocket(Principal remoteServerDN, BigInteger serialNumber) throws IOException, java.security.GeneralSecurityException, Exception {
-            MITMSSLSocketFactory ssf = new MITMSSLSocketFactory(remoteServerDN, serialNumber);
+            if(!dnMap.containsKey(remoteServerDN))
+                dnMap.put(remoteServerDN, new MITMSSLSocketFactory(remoteServerDN, serialNumber));
+
+            MITMSSLSocketFactory ssf = dnMap.get(remoteServerDN);
             // you may want to consider caching this result for better performance
             m_serverSocket = ssf.createServerSocket("localhost", 0, timeout);
             return m_serverSocket;
@@ -274,19 +279,19 @@ public class HTTPSProxyEngine extends ProxyEngine
          */
         public void run()
         {
-                try {
-                    final Socket localSocket = this.getServerSocket().accept();
+            try {
+                final Socket localSocket = this.getServerSocket().accept();
 
-                     System.err.println("New proxy connection to " +
-                       m_tempRemoteHost + ":" + m_tempRemotePort);
+                 System.err.println("New proxy connection to " +
+                   m_tempRemoteHost + ":" + m_tempRemotePort);
 
-                     this.launchThreadPair(localSocket, remoteSocket,
-                                          localSocket.getInputStream(),
-                                          localSocket.getOutputStream(),
-                                          m_tempRemoteHost, m_tempRemotePort);
-                } catch(IOException e) {
-                    e.printStackTrace(System.err);
-                }
+                 this.launchThreadPair(localSocket, remoteSocket,
+                                      localSocket.getInputStream(),
+                                      localSocket.getOutputStream(),
+                                      m_tempRemoteHost, m_tempRemotePort);
+            } catch(IOException e) {
+                e.printStackTrace(System.err);
+            }
         }
     }
 
