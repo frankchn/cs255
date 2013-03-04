@@ -22,38 +22,38 @@ public abstract class ProxyEngine implements Runnable {
     protected ServerSocket m_serverSocket;
 
     public ProxyEngine(MITMSocketFactory socketFactory,
-		       ProxyDataFilter requestFilter,
-		       ProxyDataFilter responseFilter,
-		       ConnectionDetails connectionDetails,
-		       int timeout)
-	throws IOException
+                       ProxyDataFilter requestFilter,
+                       ProxyDataFilter responseFilter,
+                       ConnectionDetails connectionDetails,
+                       int timeout)
+        throws IOException
     {
-	m_socketFactory = socketFactory;
-	m_requestFilter = requestFilter;
-	m_responseFilter = responseFilter;
-	m_connectionDetails = connectionDetails;
+        m_socketFactory = socketFactory;
+        m_requestFilter = requestFilter;
+        m_responseFilter = responseFilter;
+        m_connectionDetails = connectionDetails;
 
-	m_outputWriter = requestFilter.getOutputPrintWriter();
+        m_outputWriter = requestFilter.getOutputPrintWriter();
 
-	m_serverSocket =
-	    m_socketFactory.createServerSocket(
-		connectionDetails.getLocalHost(),
-		connectionDetails.getLocalPort(),
-		timeout);
+        m_serverSocket =
+            m_socketFactory.createServerSocket(
+                connectionDetails.getLocalHost(),
+                connectionDetails.getLocalPort(),
+                timeout);
     }
 
     //run() method from Runnable is implemented in subclasses
 
     public final ServerSocket getServerSocket() {
-	return m_serverSocket;
+        return m_serverSocket;
     }
 
     protected final MITMSocketFactory getSocketFactory() {
-	return m_socketFactory;
+        return m_socketFactory;
     }
 
     protected final ConnectionDetails getConnectionDetails() {
-	return m_connectionDetails;
+        return m_connectionDetails;
     }
 
     
@@ -64,34 +64,34 @@ public abstract class ProxyEngine implements Runnable {
      *
      */
     protected final void launchThreadPair(Socket localSocket, Socket remoteSocket,
-					  InputStream localInputStream,
-					  OutputStream localOutputStream,
-					  String remoteHost,
-					  int remotePort)
-	throws IOException
+                                          InputStream localInputStream,
+                                          OutputStream localOutputStream,
+                                          String remoteHost,
+                                          int remotePort)
+        throws IOException
     {
 
-	new StreamThread(new ConnectionDetails(
-			     m_connectionDetails.getLocalHost(),
-			     localSocket.getPort(),
-			     remoteHost,
-			     remoteSocket.getPort(),
-			     m_connectionDetails.isSecure()),
-			 localInputStream,
-			 remoteSocket.getOutputStream(),
-			 m_requestFilter,
-			 m_outputWriter);
+        new StreamThread(new ConnectionDetails(
+                             m_connectionDetails.getLocalHost(),
+                             localSocket.getPort(),
+                             remoteHost,
+                             remoteSocket.getPort(),
+                             m_connectionDetails.isSecure()),
+                         localInputStream,
+                         remoteSocket.getOutputStream(),
+                         m_requestFilter,
+                         m_outputWriter);
 
-	new StreamThread(new ConnectionDetails(
-			     remoteHost,
-			     remoteSocket.getPort(),
-			     m_connectionDetails.getLocalHost(),
-			     localSocket.getPort(),
-			     m_connectionDetails.isSecure()),
-			 remoteSocket.getInputStream(),
-			 localOutputStream,
-			 m_responseFilter,
-			 m_outputWriter);
+        new StreamThread(new ConnectionDetails(
+                             remoteHost,
+                             remoteSocket.getPort(),
+                             m_connectionDetails.getLocalHost(),
+                             localSocket.getPort(),
+                             m_connectionDetails.isSecure()),
+                         remoteSocket.getInputStream(),
+                         localOutputStream,
+                         m_responseFilter,
+                         m_outputWriter);
     }
 }
 
