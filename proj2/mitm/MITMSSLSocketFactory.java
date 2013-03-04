@@ -109,10 +109,10 @@ public final class MITMSSLSocketFactory implements MITMSocketFactory
     public MITMSSLSocketFactory(Principal serverDN, BigInteger serialNumber)
         throws IOException,GeneralSecurityException, Exception
     {
-        socketinit++;
-        //this();
         // TODO(cs255): replace this with code to generate a new (forged) server certificate with a DN of serverDN
         //   and a serial number of serialNumber.
+
+        socketinit++;
 
         // You may find it useful to work from the comment skeleton below.
         m_sslContext = SSLContext.getInstance("SSL");
@@ -132,6 +132,7 @@ public final class MITMSSLSocketFactory implements MITMSocketFactory
             this.ks = keyStore;
         } else {
             keyStore = null;
+            System.out.println("keystore is null!");
         }
 
         // Get our key pair and our own DN (not the remote server's DN) from the keystore.
@@ -141,34 +142,33 @@ public final class MITMSSLSocketFactory implements MITMSocketFactory
         Principal ourDN = certificate.getSubjectDN();
 
         GregorianCalendar date = (GregorianCalendar) Calendar.getInstance();
-        iaik.x509.X509Certificate serverCertificate = new iaik.x509.X509Certificate();
+        iaik.x509.X509Certificate serverCertificate = new iaik.x509.X509Certificate(certificate.getEncoded());
 
         serverCertificate.setSubjectDN(serverDN);
         serverCertificate.setSerialNumber(serialNumber);
         serverCertificate.setIssuerDN(ourDN);
 
         serverCertificate.setValidNotBefore(date.getTime());
-        date.add(Calendar.MONTH, 120);
+        date.add(Calendar.MONTH, 60);
         serverCertificate.setValidNotAfter(date.getTime());
 
         serverCertificate.setPublicKey(publicKey);
 
         if(privateKey.getAlgorithm().equals("RSA"))
-            serverCertificate.sign(iaik.asn1.structures.AlgorithmID.rsa, privateKey);
+            serverCertificate.sign(AlgorithmID.sha1WithRSAEncryption, privateKey);
         else if(privateKey.getAlgorithm().equals("DSA"))
-            serverCertificate.sign(iaik.asn1.structures.AlgorithmID.dsa, privateKey);
+            serverCertificate.sign(AlgorithmID.dsaWithSHA1, privateKey);
         else
             throw new RuntimeException("Unrecognized Signing Method!");
 
         KeyStore serverKeyStore = KeyStore.getInstance(keyStoreType);
         serverKeyStore.load(null, keyStorePassword);
 
-        serverKeyStore.setCertificateEntry(alias, certificate);
-        serverKeyStore.setKeyEntry(alias, privateKey, keyStorePassword, new Certificate[] { serverCertificate });
+        serverKeyStore.setCertificateEntry(alias, serverCertificate);
+        serverKeyStore.setKeyEntry(alias, privateKey, keyStorePassword, new Certificate[] { serverCertificate, certificate });
         
-        final KeyManagerFactory keyManagerFactory =
-            KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-        keyManagerFactory.init(serverKeyStore, keyStorePassword);
+        final KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        keyManagerFactory.init(keyStore, keyStorePassword);
 
         m_sslContext.init(keyManagerFactory.getKeyManagers(),
                           new TrustManager[] { new TrustEveryone() },
@@ -176,7 +176,6 @@ public final class MITMSSLSocketFactory implements MITMSocketFactory
 
         m_clientSocketFactory = m_sslContext.getSocketFactory();
         m_serverSocketFactory = m_sslContext.getServerSocketFactory(); 
-
 
     }
 
