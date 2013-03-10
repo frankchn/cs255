@@ -75,7 +75,7 @@ class MITMAdminServer implements Runnable
     }
 
     public void run() {
-        //System.out.println("Pwd = " + getSaltedHash("cs255test"));
+        //System.out.println("Pwd = " + getSaltedHash("cs255password"));
 
         System.out.println("Admin server initialized, listening on port " + m_serverSocket.getLocalPort());
         while( true ) {
