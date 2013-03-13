@@ -95,6 +95,8 @@ public class HTTPSProxyEngine extends ProxyEngine
 
     }
 
+    public static int CONNECTCount = 0;
+
     public void run()
     {
         // Should be more than adequate.
@@ -127,6 +129,8 @@ public class HTTPSProxyEngine extends ProxyEngine
 
                 if (httpsConnectMatcher.find()) {//then we have a proxy CONNECT message!
                     // Discard any other plaintext data the client sends us:
+                    CONNECTCount++;
+
                     while (in.read(buffer, 0, in.available()) > 0) {
                     }
 
