@@ -8,6 +8,7 @@ import java.io.*;
 import java.util.*;
 import java.io.FileWriter;
 import java.io.PrintWriter;
+import javax.crypto.Mac;
 
 /**
  * Main class for the Man In The Middle SSL proxy.  Delegates the real work

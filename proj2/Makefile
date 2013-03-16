@@ -23,7 +23,7 @@ JAVASRCS        = \
 
 JAVAOBJS        = $(JAVASRCS:.java=.class)
 
-JAVACFLAGS	= -classpath "${CLASSPATH}:.:iaik_jce.jar"
+JAVACFLAGS	= -classpath "${CLASSPATH}:.:iaik_jce.jar:bcprov-jdk15on-148.jar"
 
 .SUFFIXES:	.class .java
 
