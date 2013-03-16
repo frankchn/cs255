@@ -38,7 +38,7 @@ class MITMAdminServer implements Runnable
                 byte[] buffer = new byte[40960];
 
                 Pattern userPwdPattern =
-                    Pattern.compile("password:(\\S+)\\s+command:(\\S+)\\sCN:(\\S*)\\s");
+                    Pattern.compile("password:(\\S+)\\s+command:(\\S+)\\s+CN:(\\S*)\\s");
                 
                 BufferedInputStream in =
                     new BufferedInputStream(m_socket.getInputStream(),
@@ -75,7 +75,9 @@ class MITMAdminServer implements Runnable
                         sendString("Wrong password!");
                         m_socket.close();
                     }
-                }       
+                } else {
+                    System.out.println("Cannot find password string for some reason.");
+                }      
             }
             catch( InterruptedIOException e ) {
             }
