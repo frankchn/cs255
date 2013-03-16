@@ -9,6 +9,9 @@ import java.net.*;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.TrustManager;
+import javax.crypto.Mac;
+import javax.crypto.SecretKeySpec;
+import org.bouncycastle.util.encoders.Base64Encoder;
 
 public class MITMAdminClient
 {
@@ -100,14 +103,41 @@ public class MITMAdminClient
         }
 
     }
+
+    public static String generateResponse(String challenge, String password) throws GeneralSecurityException {
+        byte[] hmacData = null;
+ 
+        try {
+            SecretKeySpec secretKey = new SecretKeySpec(password.getBytes("UTF-8"), "HmacSHA256");
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(secretKey);
+            hmacData = mac.doFinal(challenge.getBytes("UTF-8"));
+            return new Base64Encoder().encode(hmacData);
+        } catch (UnsupportedEncodingException e) {
+            throw new GeneralSecurityException(e);
+        }
+    }
     
     public void run() 
     {
         try {
             if( m_remoteSocket != null ) {
-                PrintWriter writer =
+ 
+		BufferedInputStream in =
+                    new BufferedInputStream(m_socket.getInputStream(),
+                                            buffer.length);
+		
+		int bytesRead = in.read(buffer);
+
+                String challenge =
+                    bytesRead > 0 ?
+                    new String(buffer, 0, bytesRead) : "";
+
+		String response = generateResponse(challenge, password);
+
+		PrintWriter writer =
                     new PrintWriter( m_remoteSocket.getOutputStream() );
-                writer.println("password:"+password);
+                writer.println("response:"+response);
                 writer.println("command:"+command);
                 writer.println("CN:"+commonName);
                 writer.flush();
