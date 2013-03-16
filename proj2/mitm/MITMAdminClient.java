@@ -12,6 +12,7 @@ import javax.net.ssl.TrustManager;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.bouncycastle.util.encoders.Base64Encoder;
+import java.security.GeneralSecurityException;
 
 public class MITMAdminClient
 {
@@ -113,10 +114,12 @@ public class MITMAdminClient
             mac.init(secretKey);
             hmacData = mac.doFinal(challenge.getBytes("UTF-8"));
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            Base64Encoder().encode(hmacData, 0, hmacData.length, baos);
+            new Base64Encoder().encode(hmacData, 0, hmacData.length, baos);
             return baos.toString();
         } catch (UnsupportedEncodingException e) {
             throw new GeneralSecurityException(e);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
     
@@ -125,9 +128,9 @@ public class MITMAdminClient
         try {
             if( m_remoteSocket != null ) {
  
-		BufferedInputStream in =
-                    new BufferedInputStream(m_socket.getInputStream(),
-                                            buffer.length);
+        byte[] buffer = new byte[40960];
+
+		BufferedInputStream in = new BufferedInputStream(m_remoteSocket.getInputStream(), buffer.length);
 		
 		int bytesRead = in.read(buffer);
 
