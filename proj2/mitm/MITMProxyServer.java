@@ -41,6 +41,7 @@ public class MITMProxyServer
             "\n   [-keyStoreType <type>]       javax.net.ssl.XXX properties" +
             "\n   [-keyStoreAlias <alias>]     Default is keytool default of 'mykey'" +
             "\n   [-outputFile <filename>]     Default is stdout" +
+            "\n   [-useMAC]                    Use MAC authentication method rather than the standard" +
             "\n" +
             "\n -outputFile specifies where the output from ProxyDataFilter will go." +
             "\n By default, it is sent to stdout" +
@@ -57,7 +58,7 @@ public class MITMProxyServer
     }
 
     private HTTPSProxyEngine m_engine = null;
-    private MITMAdminServer m_adminServer = null;
+    private Runnable m_adminServer = null;
     
     private MITMProxyServer(String[] args)
     {
@@ -70,6 +71,8 @@ public class MITMProxyServer
 
         int timeout = 0; 
         String filename = null;
+
+        boolean useMAC = false;
 
         try {
             for (int i=0; i<args.length; i++)
@@ -108,6 +111,8 @@ public class MITMProxyServer
                     PrintWriter pw = new PrintWriter(new FileWriter(args[++i]), true);
                     requestFilter.setOutputPrintWriter(pw);
                     responseFilter.setOutputPrintWriter(pw);
+                } else if (args[i].equals("-useMAC")) {
+                    useMAC = true;
                 } else {
                     throw printUsage();
                 }
@@ -131,6 +136,8 @@ public class MITMProxyServer
 
         System.err.println(startMessage);
 
+        System.out.println("Admin Server Type: " + (useMAC ? "MAC-based" : "Normal-based"));
+
         try {
             m_engine = 
                 new HTTPSProxyEngine(new MITMPlainSocketFactory(),
@@ -140,8 +147,12 @@ public class MITMProxyServer
                                      localHost,
                                      localPort,
                                      timeout);
-            m_adminServer = new MITMAdminServer( localHost, adminPort, m_engine );
-            
+
+            if(useMAC)
+                m_adminServer = new MITMAdminServerMAC( localHost, adminPort, m_engine );
+            else
+                m_adminServer = new MITMAdminServer( localHost, adminPort, m_engine );
+
             System.err.println("Proxy initialized, listening on port " + localPort);
         }
         catch (Exception e){
