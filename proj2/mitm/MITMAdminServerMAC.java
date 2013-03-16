@@ -14,8 +14,8 @@ import java.security.GeneralSecurityException;
 import java.util.*;
 import java.util.regex.*;
 import javax.crypto.Mac;
-import javax.crypto.SecretKeySpec;
-import org.bouncycastle.util.encoders.Base64Encoder;
+import javax.crypto.spec.SecretKeySpec;
+import org.bouncycastle.util.encoders.*;
 import java.security.SecureRandom;
 import java.math.BigInteger;
 
@@ -41,9 +41,13 @@ class MITMAdminServerMAC implements Runnable
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(secretKey);
             hmacData = mac.doFinal(challenge.getBytes("UTF-8"));
-            return new Base64Encoder().encode(hmacData);
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            new Base64Encoder().encode(hmacData, 0, hmacData.length, baos);
+            return baos.toString();
         } catch (UnsupportedEncodingException e) {
             throw new GeneralSecurityException(e);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -57,7 +61,7 @@ class MITMAdminServerMAC implements Runnable
 
                 byte[] buffer = new byte[40960];
 
-		string challenge = 
+		String challenge = 
 		    new BigInteger(130, random).toString(32);
 
 		PrintWriter writer = 
@@ -90,9 +94,8 @@ class MITMAdminServerMAC implements Runnable
                     boolean authenticated = false;
 
                     for(String sp : MITMProxyServer.passwords) {
-			String response = generateResponse(challenge,
-							   password);
-                        if( clientResponse == response )
+			            String response = generateResponse(challenge, sp);
+                        if(clientResponse.equals(response))
                             authenticated = true;
                     }
 

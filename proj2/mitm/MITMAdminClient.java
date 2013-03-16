@@ -10,7 +10,7 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.TrustManager;
 import javax.crypto.Mac;
-import javax.crypto.SecretKeySpec;
+import javax.crypto.spec.SecretKeySpec;
 import org.bouncycastle.util.encoders.Base64Encoder;
 
 public class MITMAdminClient
@@ -112,7 +112,9 @@ public class MITMAdminClient
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(secretKey);
             hmacData = mac.doFinal(challenge.getBytes("UTF-8"));
-            return new Base64Encoder().encode(hmacData);
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            Base64Encoder().encode(hmacData, 0, hmacData.length, baos);
+            return baos.toString();
         } catch (UnsupportedEncodingException e) {
             throw new GeneralSecurityException(e);
         }
