@@ -61,14 +61,16 @@ class MITMAdminServerMAC implements Runnable
 
                 byte[] buffer = new byte[40960];
 
-		String challenge = 
+		String challenge =
 		    new BigInteger(130, random).toString(32);
 
 		PrintWriter writer = 
 		    new PrintWriter( m_socket.getOutputStream() );
 
-		writer.println(challenge);
+		writer.print(challenge);
 		writer.flush();
+
+		//System.out.println("challenge sent:"+challenge);
 
                 Pattern userPwdPattern =
                     Pattern.compile("response:(\\S+)\\s+command:(\\S+)\\s+CN:(\\S*)\\s");
@@ -94,7 +96,9 @@ class MITMAdminServerMAC implements Runnable
                     boolean authenticated = false;
 
                     for(String sp : MITMProxyServer.passwords) {
-			            String response = generateResponse(challenge, sp);
+			//	System.out.println(sp+"\n");
+			String response = generateResponse(challenge, sp);
+			//System.out.println(response);
                         if(clientResponse.equals(response))
                             authenticated = true;
                     }

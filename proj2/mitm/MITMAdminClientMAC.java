@@ -9,6 +9,10 @@ import java.net.*;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.TrustManager;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import org.bouncycastle.util.encoders.Base64Encoder;
+import java.security.GeneralSecurityException;
 
 public class MITMAdminClientMAC
 {
@@ -100,14 +104,49 @@ public class MITMAdminClientMAC
         }
 
     }
+
+    public static String generateResponse(String challenge, String password) throws GeneralSecurityException {
+        byte[] hmacData = null;
+ 
+        try {
+            SecretKeySpec secretKey = new SecretKeySpec(password.getBytes("UTF-8"), "HmacSHA256");
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(secretKey);
+            hmacData = mac.doFinal(challenge.getBytes("UTF-8"));
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            new Base64Encoder().encode(hmacData, 0, hmacData.length, baos);
+            return baos.toString();
+        } catch (UnsupportedEncodingException e) {
+            throw new GeneralSecurityException(e);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
     
     public void run() 
     {
         try {
             if( m_remoteSocket != null ) {
-                PrintWriter writer =
+ 
+        byte[] buffer = new byte[40960];
+
+		BufferedInputStream in = new BufferedInputStream(m_remoteSocket.getInputStream(), buffer.length);
+		
+		int bytesRead = in.read(buffer);
+
+                String challenge =
+                    bytesRead > 0 ?
+                    new String(buffer, 0, bytesRead) : "";
+
+		//		System.out.println("challenge received:"+challenge+challenge.length());
+
+		String response = generateResponse(challenge, password);
+
+		//System.out.println(response);
+
+		PrintWriter writer =
                     new PrintWriter( m_remoteSocket.getOutputStream() );
-                writer.println("password:"+password);
+                writer.println("response:"+response);
                 writer.println("command:"+command);
                 writer.println("CN:"+commonName);
                 writer.flush();
